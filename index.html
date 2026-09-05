@@ -1,0 +1,2381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AeroGuard Orbit — AI-Powered Satellite Collision Avoidance</title>
+<style>
+:root {
+  --bg-primary: #020b18;
+  --bg-secondary: #041525;
+  --bg-panel: rgba(4,21,37,0.94);
+  --border: rgba(0,212,255,0.18);
+  --border-bright: rgba(0,212,255,0.45);
+  --cyan: #00d4ff;
+  --cyan-dim: rgba(0,212,255,0.6);
+  --green: #00ff88;
+  --amber: #ffb800;
+  --red: #ff3b3b;
+  --white: #e8f4ff;
+  --white-dim: rgba(232,244,255,0.6);
+  --text-label: rgba(0,212,255,0.75);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{background:var(--bg-primary);color:var(--white);font-family:'Courier New','Consolas',monospace;font-size:12px;overflow-x:hidden;}
+
+/* ── SCANLINES ── */
+body::after{
+  content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.07) 2px,rgba(0,0,0,0.07) 4px);
+}
+
+/* ── BOOT SPLASH ── */
+#bootSplash{
+  position:fixed;top:0;left:0;right:0;bottom:0;z-index:9000;
+  background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity 0.8s ease;
+}
+#bootSplash.fade-out{opacity:0;pointer-events:none;}
+.boot-logo{font-size:28px;letter-spacing:8px;color:var(--cyan);text-shadow:0 0 30px rgba(0,212,255,0.8);margin-bottom:8px;}
+.boot-sub{font-size:11px;letter-spacing:4px;color:rgba(0,212,255,0.5);margin-bottom:40px;}
+.boot-log{width:480px;max-width:90vw;font-size:11px;color:#00ff88;line-height:1.9;text-align:left;}
+.boot-log-line{opacity:0;animation:bootLine 0.15s forwards;}
+@keyframes bootLine{to{opacity:1;}}
+.boot-bar-wrap{width:480px;max-width:90vw;height:3px;background:rgba(0,212,255,0.15);margin-top:20px;}
+.boot-bar{height:3px;background:var(--cyan);width:0%;transition:width 0.1s linear;box-shadow:0 0 10px var(--cyan);}
+.boot-ready{color:var(--cyan);font-size:13px;letter-spacing:4px;margin-top:16px;opacity:0;transition:opacity 0.5s;}
+
+/* ── NAV ── */
+#topNav{
+  display:flex;align-items:center;justify-content:space-between;
+  background:rgba(1,7,18,0.98);border-bottom:1px solid var(--border-bright);
+  padding:0 14px;height:52px;position:sticky;top:0;z-index:100;
+}
+.nav-left{display:flex;align-items:center;gap:12px;}
+.logo{display:flex;align-items:center;gap:8px;margin-right:4px;}
+.logo-icon{font-size:22px;}
+.logo-main{font-size:13px;font-weight:700;color:var(--cyan);letter-spacing:2px;display:block;text-shadow:0 0 12px rgba(0,212,255,0.5);}
+.logo-sub{font-size:8px;color:var(--text-label);letter-spacing:1px;display:block;}
+.nav-links{display:flex;gap:0;}
+.nav-link{
+  padding:5px 9px;font-size:9px;letter-spacing:1px;color:var(--white-dim);
+  cursor:pointer;border-bottom:2px solid transparent;text-decoration:none;
+  transition:all 0.2s;white-space:nowrap;
+}
+.nav-link:hover,.nav-link.active{color:var(--cyan);border-bottom-color:var(--cyan);}
+.nav-right{display:flex;align-items:center;gap:10px;}
+.nav-meta{display:flex;align-items:center;gap:4px;font-size:10px;}
+.meta-label{color:var(--text-label);font-size:8px;letter-spacing:1px;}
+.meta-value{font-weight:700;letter-spacing:1px;}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;animation:pulse 2s infinite;}
+.green-dot{background:var(--green);box-shadow:0 0 6px var(--green);}
+.amber-dot{background:var(--amber);box-shadow:0 0 6px var(--amber);}
+.red-dot{background:var(--red);box-shadow:0 0 8px var(--red);animation:fastPulse 0.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+@keyframes fastPulse{0%,100%{opacity:1}50%{opacity:0.2}}
+.sim-mode-control{display:flex;align-items:center;gap:5px;}
+.sim-mode-control select{
+  background:rgba(0,212,255,0.08);border:1px solid var(--border-bright);
+  color:var(--cyan);padding:3px 7px;font-family:inherit;font-size:9px;cursor:pointer;letter-spacing:1px;
+}
+
+/* ── SIM BADGE ── */
+.sim-badge{
+  background:rgba(255,184,0,0.1);border-bottom:1px solid rgba(255,184,0,0.25);
+  color:var(--amber);text-align:center;padding:4px;font-size:9px;letter-spacing:2px;
+}
+
+/* ── PAGE CONTAINER ── */
+#pageContainer{min-height:calc(100vh - 74px);}
+.page{display:none;padding:8px 10px 16px;}
+.page.active{display:block;}
+.page-title{font-size:14px;color:var(--cyan);letter-spacing:3px;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px;}
+
+/* ── PIPELINE BAR ── */
+.pipeline-bar{
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(0,212,255,0.04);border:1px solid var(--border);
+  padding:6px 10px;margin-bottom:8px;gap:3px;flex-wrap:wrap;
+}
+.pipeline-step{
+  padding:3px 10px;border:1px solid var(--border);font-size:9px;
+  letter-spacing:2px;color:var(--white-dim);background:rgba(0,0,0,0.3);transition:all 0.4s;
+}
+.pipeline-step.active-step{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,0.07);}
+.pipeline-step.red-step{border-color:var(--red);color:var(--red);background:rgba(255,59,59,0.08);}
+.pipeline-arrow{color:var(--border-bright);font-size:9px;}
+
+/* ── CONJUNCTION ALERT ── */
+.conjunction-alert{
+  background:rgba(255,59,59,0.1);border:2px solid var(--red);
+  padding:10px 14px;margin-bottom:8px;animation:redFlash 1s infinite;
+}
+.conjunction-alert.hidden{display:none;}
+@keyframes redFlash{0%,100%{border-color:var(--red);background:rgba(255,59,59,0.1)}50%{border-color:#ff7777;background:rgba(255,59,59,0.18)}}
+.alert-title{font-size:13px;color:var(--red);letter-spacing:2px;margin-bottom:6px;font-weight:700;}
+.alert-body{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:6px;}
+.alert-stat{display:flex;flex-direction:column;gap:2px;}
+.alabel{font-size:8px;color:var(--text-label);letter-spacing:1px;}
+.aval{font-size:15px;font-weight:700;}
+.alert-message{color:var(--amber);font-size:10px;letter-spacing:1px;margin:6px 0;}
+.alert-actions{display:flex;gap:8px;}
+
+/* ── DASHBOARD GRID ── */
+.dashboard-grid{display:grid;grid-template-columns:220px 1fr 220px;gap:8px;margin-bottom:8px;}
+.col-left,.col-right{display:flex;flex-direction:column;gap:8px;}
+.col-center{min-height:380px;}
+
+/* ── PANEL ── */
+.panel{background:var(--bg-panel);border:1px solid var(--border);position:relative;overflow:hidden;}
+.panel::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0.35;
+}
+.panel-header{
+  background:rgba(0,212,255,0.06);border-bottom:1px solid var(--border);
+  padding:6px 10px;font-size:9px;letter-spacing:2px;color:var(--cyan);
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+}
+.panel-body{padding:8px 10px;}
+.map-badge{background:rgba(0,212,255,0.08);border:1px solid var(--border);padding:1px 5px;font-size:7px;color:var(--cyan-dim);letter-spacing:1px;}
+.amber-badge{background:rgba(255,184,0,0.08);border-color:rgba(255,184,0,0.3);color:var(--amber);}
+.badge-active{background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.3);padding:1px 5px;font-size:7px;color:var(--green);}
+.badge-live{background:rgba(255,59,59,0.12);border:1px solid rgba(255,59,59,0.4);padding:1px 5px;font-size:7px;color:var(--red);animation:fastPulse 1s infinite;}
+.btn-icon{background:rgba(0,212,255,0.08);border:1px solid var(--border);color:var(--cyan);padding:2px 7px;font-size:8px;cursor:pointer;font-family:inherit;margin-left:auto;}
+
+/* ── SAT STATUS ── */
+.sat-grid{display:flex;flex-direction:column;gap:4px;}
+.sat-row{display:flex;justify-content:space-between;align-items:center;}
+.slabel{color:var(--text-label);font-size:9px;}
+.sval{font-size:10px;font-weight:700;}
+.divider-line{border-top:1px solid var(--border);margin:6px 0;}
+.sensor-mini-list{display:flex;flex-direction:column;gap:3px;}
+.sensor-mini{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--white-dim);}
+
+/* ── SUBSYSTEM HEALTH ── */
+.subsys-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.subsys-item{
+  display:flex;flex-direction:column;gap:2px;
+  background:rgba(0,0,0,0.25);border:1px solid var(--border);padding:5px 7px;
+}
+.subsys-label{font-size:8px;color:var(--text-label);letter-spacing:1px;}
+.subsys-val{font-size:10px;font-weight:700;}
+.subsys-val.fixed{color:var(--green);}
+.subsys-val.calibrated{color:var(--green);}
+.subsys-val.aligned{color:var(--green);}
+.subsys-val.running{color:var(--green);}
+.subsys-val.pulsing{color:var(--amber);}
+.subsys-val.cool{color:var(--cyan);}
+
+/* ── LSTM ENGINE ── */
+.lstm-pipeline{text-align:center;margin-bottom:6px;}
+.lstm-input{display:flex;justify-content:center;gap:3px;flex-wrap:wrap;margin-bottom:3px;}
+.lstm-node{background:rgba(0,212,255,0.08);border:1px solid var(--border);padding:2px 6px;font-size:8px;color:var(--cyan-dim);}
+.lstm-arrow-down{color:var(--cyan-dim);font-size:9px;margin:3px 0;}
+.lstm-model{background:rgba(0,212,255,0.12);border:1px solid var(--border-bright);padding:5px 12px;font-size:10px;letter-spacing:2px;color:var(--cyan);display:inline-block;box-shadow:0 0 12px rgba(0,212,255,0.2);}
+.lstm-outputs{margin-top:6px;display:flex;flex-direction:column;gap:4px;}
+.lstm-out-row{display:flex;justify-content:space-between;}
+.llabel{color:var(--text-label);font-size:9px;}
+.lval{font-size:10px;font-weight:700;}
+.ai-recommendation{
+  margin-top:8px;padding:7px 9px;
+  background:rgba(0,255,136,0.07);border:1px solid rgba(0,255,136,0.3);
+  display:flex;align-items:center;gap:6px;font-size:10px;letter-spacing:1px;color:var(--green);transition:all 0.3s;
+}
+.ai-recommendation.warn{background:rgba(255,184,0,0.07);border-color:rgba(255,184,0,0.4);color:var(--amber);}
+.ai-recommendation.crit{background:rgba(255,59,59,0.1);border-color:rgba(255,59,59,0.5);color:var(--red);}
+
+/* ── ORBITAL MAP ── */
+.orbital-panel{height:100%;}
+.orbital-map-wrap{position:relative;height:calc(100% - 38px);min-height:340px;}
+#orbitalCanvas,#orbitalCanvas2{width:100%;height:100%;display:block;cursor:crosshair;}
+.orbital-overlay{position:absolute;bottom:8px;left:8px;display:flex;flex-direction:column;gap:3px;pointer-events:none;}
+.oo-item{font-size:9px;background:rgba(2,11,24,0.85);padding:2px 7px;border-left:2px solid currentColor;}
+.object-info-panel{position:absolute;top:8px;right:8px;width:175px;background:rgba(2,11,24,0.97);border:1px solid var(--border-bright);z-index:10;}
+.object-info-panel.hidden{display:none;}
+.oip-header{padding:5px 7px;background:rgba(0,212,255,0.08);font-size:9px;color:var(--cyan);letter-spacing:1px;display:flex;justify-content:space-between;}
+.oip-header button{background:none;border:none;color:var(--white-dim);cursor:pointer;}
+#oipContent{padding:7px;font-size:9px;}
+
+/* ── COLLISION RISK ── */
+.risk-big{text-align:center;margin:6px 0;}
+.risk-number{font-size:32px;font-weight:700;color:var(--green);line-height:1;transition:color 0.4s;text-shadow:0 0 20px rgba(0,255,136,0.4);}
+.risk-label{font-size:11px;letter-spacing:3px;color:var(--green);margin-top:3px;transition:color 0.4s;}
+.risk-bar-wrap{margin:6px 0;}
+.risk-bar-bg{height:3px;background:rgba(255,255,255,0.08);}
+.risk-bar-fill{height:100%;transition:width 0.6s,background 0.6s;}
+.risk-levels{display:flex;justify-content:space-between;margin:5px 0;}
+.rl{font-size:8px;}
+.risk-stats{display:flex;flex-direction:column;gap:4px;margin:6px 0;}
+.rs-row{display:flex;justify-content:space-between;}
+.rslabel{color:var(--text-label);font-size:9px;}
+.rsval{font-size:10px;font-weight:700;}
+.risk-graph-wrap{margin-top:6px;}
+.rg-label{font-size:8px;color:var(--text-label);letter-spacing:1px;margin-bottom:3px;}
+#riskGraph{width:100%;}
+.rg-axis{display:flex;justify-content:space-between;font-size:8px;color:var(--text-label);margin-top:2px;}
+
+/* ── SAFETY VALIDATION ── */
+.sv-checks{display:flex;flex-direction:column;gap:4px;}
+.sv-row{display:flex;justify-content:space-between;align-items:center;padding:3px 5px;background:rgba(0,0,0,0.2);border-left:2px solid var(--border);}
+.svc-name{font-size:9px;color:var(--white-dim);}
+.svc-result{font-size:9px;font-weight:700;padding:1px 5px;}
+.svc-result.pass{color:var(--green);}
+.svc-result.fail{color:var(--red);}
+.svc-result.warn{color:var(--amber);}
+.sv-final{margin-top:8px;padding:8px;text-align:center;background:rgba(0,255,136,0.07);border:1px solid rgba(0,255,136,0.3);font-size:11px;letter-spacing:2px;color:var(--green);display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.3s;}
+.sv-final.danger{background:rgba(255,59,59,0.09);border-color:rgba(255,59,59,0.4);color:var(--red);}
+.sv-final.warn{background:rgba(255,184,0,0.07);border-color:rgba(255,184,0,0.3);color:var(--amber);}
+.safety-principle{margin-top:7px;font-size:8px;letter-spacing:1px;color:var(--cyan-dim);text-align:center;border-top:1px solid var(--border);padding-top:7px;}
+
+/* ── BOTTOM ROW ── */
+.bottom-row{display:grid;grid-template-columns:1fr 220px 280px;gap:8px;}
+.maneuver-body{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;}
+.mv-section{flex:1;min-width:110px;}
+.mv-title{font-size:8px;color:var(--text-label);letter-spacing:2px;margin-bottom:5px;}
+.mv-row{display:flex;justify-content:space-between;font-size:9px;margin-bottom:3px;}
+.mv-arrow{display:flex;align-items:center;font-size:18px;color:var(--cyan-dim);padding:0 6px;}
+.mv-buttons{display:flex;flex-direction:column;gap:4px;justify-content:center;}
+.op-body{display:flex;flex-direction:column;gap:7px;}
+.op-status-wrap{display:flex;justify-content:space-between;align-items:center;}
+.op-status-label{font-size:8px;color:var(--text-label);letter-spacing:1px;}
+.op-status{font-size:11px;color:var(--green);letter-spacing:2px;font-weight:700;}
+.op-buttons{display:flex;flex-direction:column;gap:4px;}
+
+/* ── COMLINK PANEL ── */
+.comlink-panel{background:rgba(0,8,4,0.95);border:1px solid rgba(0,255,136,0.2);padding:8px 10px;}
+.comlink-header{font-size:9px;color:var(--green);letter-spacing:3px;border-bottom:1px solid rgba(0,255,136,0.15);padding-bottom:5px;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.comlink-log{font-size:10px;line-height:1.8;font-family:'Courier New',monospace;}
+.cl-line{display:flex;gap:6px;animation:clFade 0.3s ease;}
+@keyframes clFade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.cl-sender-esa{color:rgba(0,212,255,0.7);}
+.cl-sender-cubesat{color:var(--green);}
+.cl-sender-alert{color:var(--red);}
+.cl-msg{color:rgba(255,255,255,0.7);}
+
+/* ── CUBESAT VISUAL ── */
+.cubesat-canvas-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;}
+#cubesatCanvas{border:1px solid rgba(0,212,255,0.15);}
+
+/* ── BUTTONS ── */
+.btn-primary{background:rgba(0,212,255,0.12);border:1px solid var(--cyan);color:var(--cyan);padding:6px 10px;font-family:inherit;font-size:9px;letter-spacing:1px;cursor:pointer;transition:all 0.2s;width:100%;}
+.btn-primary:hover{background:rgba(0,212,255,0.22);box-shadow:0 0 10px rgba(0,212,255,0.3);}
+.btn-secondary{background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--white-dim);padding:5px 9px;font-family:inherit;font-size:9px;cursor:pointer;transition:all 0.2s;}
+.btn-secondary:hover{border-color:var(--cyan);color:var(--cyan);}
+.btn-approve{background:rgba(0,255,136,0.12);border:2px solid var(--green);color:var(--green);padding:6px 14px;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:1px;}
+.btn-reject{background:rgba(255,184,0,0.08);border:1px solid var(--amber);color:var(--amber);padding:6px 12px;font-family:inherit;font-size:10px;cursor:pointer;}
+.btn-abort{background:rgba(255,59,59,0.18);border:2px solid var(--red);color:var(--red);padding:6px 14px;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:1px;}
+.btn-review{background:rgba(255,184,0,0.08);border:1px solid var(--amber);color:var(--amber);padding:6px 12px;font-family:inherit;font-size:10px;cursor:pointer;}
+.btn-approve-sm{background:rgba(0,255,136,0.09);border:1px solid rgba(0,255,136,0.4);color:var(--green);padding:5px;font-family:inherit;font-size:9px;cursor:pointer;width:100%;}
+.btn-reject-sm{background:rgba(255,184,0,0.07);border:1px solid rgba(255,184,0,0.3);color:var(--amber);padding:5px;font-family:inherit;font-size:9px;cursor:pointer;width:100%;}
+.btn-abort-sm{background:rgba(255,59,59,0.13);border:1px solid rgba(255,59,59,0.5);color:var(--red);padding:5px;font-family:inherit;font-size:9px;cursor:pointer;font-weight:700;width:100%;}
+
+/* ── EVENT LOG ── */
+.event-log{display:flex;flex-direction:column;gap:2px;font-size:9px;}
+.el-entry{display:flex;gap:7px;padding:3px 5px;border-left:2px solid var(--border);animation:fadeSlideIn 0.3s ease;}
+.el-entry.info{border-left-color:var(--green);}
+.el-entry.warn{border-left-color:var(--amber);background:rgba(255,184,0,0.03);}
+.el-entry.crit{border-left-color:var(--red);background:rgba(255,59,59,0.05);}
+@keyframes fadeSlideIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+.el-time{color:var(--text-label);min-width:58px;}
+.el-sev{min-width:12px;}
+.el-msg{color:var(--white-dim);}
+.event-panel .panel-body{max-height:130px;overflow-y:auto;}
+
+/* ── SENSORS ── */
+.sensors-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.sensor-card{background:var(--bg-panel);border:1px solid var(--border);padding:10px;}
+.sc-header{display:flex;align-items:center;gap:5px;margin-bottom:3px;}
+.sc-icon{font-size:14px;}
+.sc-name{font-size:10px;font-weight:700;color:var(--white);flex:1;}
+.sc-badge{font-size:8px;padding:1px 5px;letter-spacing:1px;}
+.sc-badge.green{background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.3);color:var(--green);}
+.sc-badge.amber{background:rgba(255,184,0,0.08);border:1px solid rgba(255,184,0,0.3);color:var(--amber);}
+.sc-role{font-size:8px;color:var(--text-label);margin-bottom:7px;}
+.sc-metrics{display:flex;flex-direction:column;gap:3px;margin-bottom:7px;}
+.scm-row{display:flex;justify-content:space-between;font-size:9px;}
+.sc-live-bar{height:2px;background:rgba(255,255,255,0.06);}
+.sc-live-fill{height:100%;background:var(--cyan);transition:width 0.8s;}
+.sc-live-fill.green-fill{background:var(--green);}
+.sc-live-fill.amber-fill{background:var(--amber);}
+
+/* ── TELEMETRY ── */
+.telemetry-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.telem-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03);}
+.tl{color:var(--text-label);font-size:9px;}
+.tv{font-size:10px;font-weight:700;}
+
+/* ── RISK ANALYSIS ── */
+.risk-analysis-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.tc-row{display:flex;justify-content:space-between;font-size:9px;margin-bottom:3px;}
+.dp-steps{display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-bottom:7px;}
+.dp-step{font-size:8px;padding:3px 7px;border:1px solid var(--border);color:var(--white-dim);display:flex;align-items:center;gap:3px;}
+.dp-step.active{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,0.07);}
+.dp-step.compute{border-color:var(--amber);color:var(--amber);background:rgba(255,184,0,0.07);}
+.dp-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+.dp-arrow-r{color:var(--border-bright);font-size:9px;}
+.dp-update{font-size:8px;color:var(--text-label);margin:3px 0 7px;}
+.trajectory-queued{background:rgba(0,212,255,0.03);border:1px solid var(--border);padding:9px;}
+.tq-title{font-size:9px;color:var(--cyan);letter-spacing:1px;margin-bottom:3px;}
+.tq-body{font-size:9px;color:var(--white-dim);margin-bottom:7px;line-height:1.5;}
+.tq-quote{font-size:8px;color:var(--text-label);font-style:italic;border-top:1px solid var(--border);padding-top:5px;}
+
+/* ── MANEUVER PLANNER ── */
+.maneuver-full-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.param-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.pg-item{display:flex;flex-direction:column;gap:2px;padding:5px;background:rgba(0,0,0,0.2);border-left:2px solid var(--border);}
+.pg-label{font-size:8px;color:var(--text-label);}
+.pg-val{font-size:12px;font-weight:700;}
+.maneuver-actions{display:flex;flex-direction:column;gap:5px;margin-top:10px;}
+.slider-row{display:flex;flex-direction:column;gap:2px;margin-bottom:8px;}
+.slider-row label{font-size:9px;color:var(--text-label);}
+.slider-row input[type=range]{width:100%;accent-color:var(--cyan);}
+.slider-val{font-size:9px;color:var(--cyan);}
+.sim-result-box{margin-top:10px;background:rgba(0,255,136,0.04);border:1px solid rgba(0,255,136,0.18);padding:9px;}
+.sr-title{font-size:9px;color:var(--green);letter-spacing:1px;margin-bottom:7px;}
+.sr-grid{display:flex;flex-direction:column;gap:3px;}
+.sr-row{display:flex;justify-content:space-between;font-size:9px;}
+.sr-note{font-size:8px;color:var(--white-dim);margin-top:7px;line-height:1.5;border-top:1px solid var(--border);padding-top:5px;}
+
+/* ── WHAT-IF SIMULATOR ── */
+.whatif-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.whatif-objects{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+.wo-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);padding:8px;}
+.wo-title{font-size:8px;color:var(--text-label);letter-spacing:1px;margin-bottom:5px;}
+.wo-name{font-size:11px;color:var(--cyan);font-weight:700;margin-bottom:4px;}
+.wo-row{display:flex;justify-content:space-between;font-size:9px;margin-bottom:2px;}
+
+/* ── ADVANTAGE TABLE ── */
+.adv-subtitle{color:var(--white-dim);font-size:10px;margin-bottom:12px;}
+.adv-table-wrap{overflow-x:auto;margin-bottom:14px;}
+.adv-table{width:100%;border-collapse:collapse;font-size:10px;}
+.adv-table th{background:rgba(0,212,255,0.08);border:1px solid var(--border);padding:8px 10px;color:var(--cyan);letter-spacing:1px;text-align:left;}
+.adv-table td{border:1px solid var(--border);padding:7px 10px;color:var(--white-dim);}
+.adv-table tr:hover td{background:rgba(0,212,255,0.02);}
+.adv-lead{display:inline-block;padding:2px 7px;font-size:8px;font-weight:700;letter-spacing:1px;}
+.adv-lead.current{background:rgba(0,212,255,0.08);color:var(--cyan);}
+.adv-lead.potential{background:rgba(255,184,0,0.08);color:var(--amber);}
+.adv-lead.aero{background:rgba(0,255,136,0.08);color:var(--green);}
+.adv-summary{background:rgba(0,212,255,0.03);border:1px solid var(--border);padding:18px;text-align:center;}
+.adv-summary-title{font-size:9px;color:var(--text-label);letter-spacing:2px;margin-bottom:9px;}
+.adv-summary-text{font-size:12px;color:var(--white-dim);line-height:1.8;}
+.adv-summary-text strong{color:var(--cyan);}
+.adv-principle{margin:14px 0;font-size:12px;color:var(--cyan);letter-spacing:3px;}
+.adv-roadmap{margin-top:14px;}
+.adv-roadmap-title{font-size:9px;color:var(--text-label);letter-spacing:2px;margin-bottom:9px;}
+.roadmap-steps{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:3px;}
+.roadmap-step{padding:5px 10px;font-size:9px;border:1px solid var(--border);color:var(--white-dim);}
+.roadmap-step.done{border-color:var(--green);color:var(--green);background:rgba(0,255,136,0.04);}
+.roadmap-step.next{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,0.07);}
+.rm-arrow{color:var(--border-bright);font-size:10px;}
+
+/* ── ORBITAL LEGEND ── */
+.orbital-legend{display:flex;gap:14px;flex-wrap:wrap;padding:6px 10px;background:rgba(0,0,0,0.3);margin-top:6px;}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--white-dim);}
+.leg-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+.leg-line{display:inline-block;width:18px;height:0;}
+
+/* ── MISC HELPERS ── */
+.cyan{color:var(--cyan)!important;}
+.green{color:var(--green)!important;}
+.amber{color:var(--amber)!important;}
+.red{color:var(--red)!important;}
+.dim{color:var(--white-dim)!important;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:rgba(0,0,0,0.2);}
+::-webkit-scrollbar-thumb{background:rgba(0,212,255,0.25);}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════ -->
+<!--  BOOT SPLASH                                -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="bootSplash">
+  <div class="boot-logo">AEROGUARD ORBIT</div>
+  <div class="boot-sub">AI-POWERED SATELLITE COLLISION AVOIDANCE SYSTEM</div>
+  <div class="boot-log" id="bootLog"></div>
+  <div class="boot-bar-wrap"><div class="boot-bar" id="bootBar"></div></div>
+  <div class="boot-ready" id="bootReady">▶ MISSION CONTROL READY</div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!--  TOP NAV                                    -->
+<!-- ═══════════════════════════════════════════ -->
+<nav id="topNav">
+  <div class="nav-left">
+    <div class="logo">
+      <span class="logo-icon">🛰</span>
+      <div class="logo-text">
+        <span class="logo-main">AEROGUARD ORBIT</span>
+        <span class="logo-sub">AI COLLISION AVOIDANCE SYSTEM · v2.0 SIH PROTOTYPE</span>
+      </div>
+    </div>
+    <div class="nav-links">
+      <a class="nav-link active" onclick="showPage('dashboard')">DASHBOARD</a>
+      <a class="nav-link" onclick="showPage('orbital')">ORBITAL MAP</a>
+      <a class="nav-link" onclick="showPage('risk')">RISK ANALYSIS</a>
+      <a class="nav-link" onclick="showPage('maneuver')">MANEUVER PLANNER</a>
+      <a class="nav-link" onclick="showPage('whatif')">WHAT-IF SIM</a>
+      <a class="nav-link" onclick="showPage('sensors')">SENSORS</a>
+      <a class="nav-link" onclick="showPage('telemetry')">TELEMETRY</a>
+      <a class="nav-link" onclick="showPage('eventlog')">EVENT LOG</a>
+      <a class="nav-link" onclick="showPage('advantage')">DECISION ADVANTAGE</a>
+    </div>
+  </div>
+  <div class="nav-right">
+    <div class="nav-meta"><span class="meta-label">MISSION</span><span class="meta-value cyan">AG-01</span></div>
+    <div class="nav-meta"><span class="meta-label">SAT</span><span class="meta-value cyan">AeroGuard-01</span></div>
+    <div class="nav-meta" id="connStatus"><span class="dot green-dot"></span><span class="meta-value" style="color:var(--green)">ONLINE</span></div>
+    <div class="nav-meta" id="sysStatus"><span class="dot green-dot" id="sysStatusDot"></span><span class="meta-value" id="sysStatusText" style="color:var(--green)">OPERATIONAL</span></div>
+    <div class="nav-meta"><span class="meta-label">UTC</span><span class="meta-value cyan" id="utcClock">--:--:--</span></div>
+    <div class="sim-mode-control">
+      <span class="meta-label">SIM</span>
+      <select id="simModeSelect" onchange="setSimMode(this.value)">
+        <option value="normal">NORMAL</option>
+        <option value="warning">WARNING</option>
+        <option value="critical">CRITICAL</option>
+      </select>
+    </div>
+  </div>
+</nav>
+<div class="sim-badge">⚠ SIMULATION / PROOF-OF-CONCEPT DATA — NOT FLIGHT CERTIFIED — SMART INDIA HACKATHON 2024 PROTOTYPE</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!--  PAGE CONTAINER                             -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="pageContainer">
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!--  DASHBOARD PAGE                             -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="page active" id="page-dashboard">
+
+  <!-- WORKFLOW PIPELINE -->
+  <div class="pipeline-bar">
+    <div class="pipeline-step active-step">SENSE</div><div class="pipeline-arrow">▶</div>
+    <div class="pipeline-step active-step">PROCESS</div><div class="pipeline-arrow">▶</div>
+    <div class="pipeline-step active-step">PREDICT</div><div class="pipeline-arrow">▶</div>
+    <div class="pipeline-step active-step">PLAN</div><div class="pipeline-arrow">▶</div>
+    <div class="pipeline-step active-step">VALIDATE</div><div class="pipeline-arrow">▶</div>
+    <div class="pipeline-step" id="actStep">ACT</div><div class="pipeline-arrow">▶</div>
+    <div class="pipeline-step active-step">TELEMETRY</div>
+  </div>
+
+  <!-- CONJUNCTION ALERT -->
+  <div id="conjunctionAlert" class="conjunction-alert hidden">
+    <div class="alert-title">🔴 CONJUNCTION ALERT — CRITICAL COLLISION RISK DETECTED</div>
+    <div class="alert-body">
+      <div class="alert-stat"><span class="alabel">COLLISION PROBABILITY</span><span class="aval red" id="alertProb">78.4%</span></div>
+      <div class="alert-stat"><span class="alabel">CLOSEST APPROACH</span><span class="aval red" id="alertApproach">42 min</span></div>
+      <div class="alert-stat"><span class="alabel">MISS DISTANCE</span><span class="aval red" id="alertDist">0.31 km</span></div>
+      <div class="alert-stat"><span class="alabel">RECOMMENDED ΔV</span><span class="aval amber" id="alertDV">1.24 m/s</span></div>
+    </div>
+    <div class="alert-message">⚠ HUMAN APPROVAL REQUIRED — AI CANNOT ACT AUTONOMOUSLY — PHYSICS VERIFICATION IN PROGRESS</div>
+    <div class="alert-actions">
+      <button class="btn-review" onclick="reviewManeuver()">REVIEW</button>
+      <button class="btn-approve" onclick="approveManeuver()">APPROVE MANEUVER</button>
+      <button class="btn-abort" onclick="emergencyAbort()">EMERGENCY ABORT</button>
+    </div>
+  </div>
+
+  <!-- MAIN 3-COLUMN GRID -->
+  <div class="dashboard-grid">
+
+    <!-- LEFT COLUMN -->
+    <div class="col-left">
+
+      <!-- SATELLITE STATUS + POWER/THERMAL -->
+      <div class="panel">
+        <div class="panel-header">SATELLITE STATUS</div>
+        <div class="panel-body">
+          <div class="sat-grid">
+            <div class="sat-row"><span class="slabel">Latitude</span><span class="sval cyan" id="satLat">34.2° N</span></div>
+            <div class="sat-row"><span class="slabel">Longitude</span><span class="sval cyan" id="satLon">118.7° E</span></div>
+            <div class="sat-row"><span class="slabel">Altitude</span><span class="sval cyan" id="satAlt">488.56 km</span></div>
+            <div class="sat-row"><span class="slabel">Orbital Velocity</span><span class="sval cyan" id="satVel">7.67 km/s</span></div>
+            <div class="sat-row"><span class="slabel">Orbit Period</span><span class="sval" id="satPeriod">92.7 min</span></div>
+            <div class="sat-row"><span class="slabel">Inclination</span><span class="sval" id="satInc">97.4° SSO</span></div>
+            <div class="sat-row"><span class="slabel">RAAN</span><span class="sval">233°</span></div>
+          </div>
+          <div class="divider-line"></div>
+          <div style="font-size:8px;color:var(--text-label);letter-spacing:1px;margin-bottom:5px;">POWER &amp; THERMAL STATUS</div>
+          <div class="sat-grid">
+            <div class="sat-row"><span class="slabel">Solar Array Output</span><span class="sval green" id="solarOutput">67W <span style="font-size:8px;color:var(--white-dim)">Nominal</span></span></div>
+            <div class="sat-row"><span class="slabel">Battery</span><span class="sval green" id="battLevel">87.4%</span></div>
+            <div class="sat-row"><span class="slabel">Core Temp</span><span class="sval cyan" id="coreTemp">COOL (22°C)</span></div>
+          </div>
+          <div class="divider-line"></div>
+          <div class="sensor-mini-list">
+            <div class="sensor-mini"><span class="dot green-dot"></span>GPS NEO-6M LOCKED</div>
+            <div class="sensor-mini"><span class="dot green-dot"></span>MPU6050 IMU NORMAL</div>
+            <div class="sensor-mini"><span class="dot green-dot"></span>OV2640 CAMERA ACTIVE</div>
+            <div class="sensor-mini"><span class="dot green-dot"></span>ESP32 ONLINE</div>
+            <div class="sensor-mini"><span class="dot amber-dot" id="servoMiniDot"></span><span id="servoMiniText">SERVO STANDBY</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUBSYSTEM HEALTH ARRAY -->
+      <div class="panel">
+        <div class="panel-header">SUBSYSTEM ARRAY <span class="badge-active">HEALTH PANEL</span></div>
+        <div class="panel-body">
+          <div class="subsys-grid">
+            <div class="subsys-item"><span class="subsys-label">GNSS RECEIVER</span><span class="subsys-val fixed">● FIXED</span></div>
+            <div class="subsys-item"><span class="subsys-label">GYROSCOPE</span><span class="subsys-val calibrated">● CALIBRATED</span></div>
+            <div class="subsys-item"><span class="subsys-label">STAR TRACKER</span><span class="subsys-val aligned">● ALIGNED</span></div>
+            <div class="subsys-item"><span class="subsys-label">FLIGHT COMPUTER</span><span class="subsys-val running">● RUNNING</span></div>
+            <div class="subsys-item"><span class="subsys-label">RADAR ARRAY</span><span class="subsys-val pulsing" id="radarStatus">● PULSING</span></div>
+            <div class="subsys-item"><span class="subsys-label">THRUSTER</span><span class="subsys-val cool" id="thrusterStatus">● COOL (22°C)</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LSTM RISK ENGINE -->
+      <div class="panel">
+        <div class="panel-header">GRU THREAT MODEL <span class="badge-active">ACTIVE</span></div>
+        <div class="panel-body">
+          <div class="lstm-pipeline">
+            <div class="lstm-input">
+              <div class="lstm-node">Orbital Data</div>
+              <div class="lstm-node">GPS</div>
+              <div class="lstm-node">IMU</div>
+              <div class="lstm-node">Camera</div>
+            </div>
+            <div class="lstm-arrow-down">↓ Edge Processing (ESP32) ↓</div>
+            <div class="lstm-model">LSTM / GRU RISK PREDICTOR</div>
+            <div class="lstm-arrow-down">↓</div>
+          </div>
+          <div class="lstm-outputs">
+            <div class="lstm-out-row"><span class="llabel">Model Type</span><span class="lval cyan">Gated GRU v5.1</span></div>
+            <div class="lstm-out-row"><span class="llabel">Collision Probability</span><span class="lval" id="aiCollProb" style="color:var(--green)">3.7%</span></div>
+            <div class="lstm-out-row"><span class="llabel">Anomaly Score</span><span class="lval" id="aiAnomalyScore">0.12</span></div>
+            <div class="lstm-out-row"><span class="llabel">Prediction Horizon</span><span class="lval cyan">24 HOURS</span></div>
+            <div class="lstm-out-row"><span class="llabel">Model Confidence</span><span class="lval green" id="aiConfidence">94%</span></div>
+            <div class="lstm-out-row"><span class="llabel">Last Compute Run</span><span class="lval dim">47 sec ago</span></div>
+          </div>
+          <div class="ai-recommendation" id="aiRecommendation">
+            <span class="rec-icon">✓</span>
+            <span id="aiRecText">NO IMMEDIATE MANEUVER REQUIRED</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /col-left -->
+
+    <!-- CENTER COLUMN — ORBITAL MAP -->
+    <div class="col-center">
+      <div class="panel orbital-panel">
+        <div class="panel-header">
+          ORBITAL SITUATION MAP — LIVE VIEW
+          <span class="map-badge">SIMULATED DATA</span>
+          <span class="map-badge amber-badge" id="trackedCount">17 OBJECTS TRACKED</span>
+          <button class="btn-icon" onclick="toggleBeams()">⚡ BEAMS</button>
+        </div>
+        <div class="orbital-map-wrap">
+          <canvas id="orbitalCanvas"></canvas>
+          <div class="orbital-overlay">
+            <div class="oo-item" style="color:var(--cyan)">🛰 AeroGuard-01</div>
+            <div class="oo-item" id="ooDebrisLabel" style="color:var(--amber)">⬡ DEBRIS-3342</div>
+            <div class="oo-item" style="color:rgba(0,255,136,0.7)">● SAT-7 ISS</div>
+          </div>
+        </div>
+        <div id="objectInfoPanel" class="object-info-panel hidden">
+          <div class="oip-header">SELECTED OBJECT <button onclick="closeOIP()">✕</button></div>
+          <div id="oipContent"></div>
+        </div>
+      </div>
+    </div><!-- /col-center -->
+
+    <!-- RIGHT COLUMN -->
+    <div class="col-right">
+
+      <!-- COLLISION RISK -->
+      <div class="panel" id="riskPanel">
+        <div class="panel-header">CONJUNCTION PROBABILITY</div>
+        <div class="panel-body">
+          <div class="risk-big">
+            <div class="risk-number" id="riskNumber">3.7%</div>
+            <div class="risk-label" id="riskLabel">MARGINAL RISK</div>
+          </div>
+          <div class="risk-bar-wrap"><div class="risk-bar-bg"><div class="risk-bar-fill" id="riskBarFill" style="width:3.7%;background:var(--green)"></div></div></div>
+          <div class="risk-levels">
+            <span class="rl" style="color:var(--green)">🟢 LOW</span>
+            <span class="rl" style="color:var(--amber)">🟡 MED</span>
+            <span class="rl" style="color:var(--red)">🔴 HIGH</span>
+          </div>
+          <div class="risk-stats">
+            <div class="rs-row"><span class="rslabel">Confidence Index</span><span class="rsval cyan" id="riskConf">97.3%</span></div>
+            <div class="rs-row"><span class="rslabel">Closest Approach (TCA)</span><span class="rsval cyan" id="riskApproach">6h 41m</span></div>
+            <div class="rs-row"><span class="rslabel">Miss Distance (Min)</span><span class="rsval cyan" id="riskMissDist">0.8 km</span></div>
+            <div class="rs-row"><span class="rslabel">Rel. Velocity</span><span class="rsval">11.7 km/s</span></div>
+          </div>
+          <div style="font-size:8px;color:var(--green);margin:5px 0 3px;">✓ Conjunction within monitoring threshold.<br>✓ Autonomous trajectory refinement engaged.</div>
+          <div class="risk-graph-wrap">
+            <div class="rg-label">48H RISK PROJECTION — THREAT PROBABILITY CURVE</div>
+            <canvas id="riskGraph" height="80"></canvas>
+            <div class="rg-axis"><span>NOW</span><span>12h</span><span>24h</span><span>36h</span><span>48h</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SAFETY VALIDATION -->
+      <div class="panel" id="safetyPanel">
+        <div class="panel-header">SAFETY VALIDATION</div>
+        <div class="panel-body">
+          <div class="sv-checks" id="svChecks">
+            <div class="sv-row"><span class="svc-name">Physics Check</span><span class="svc-result pass" id="svc1">✓ PASS</span></div>
+            <div class="sv-row"><span class="svc-name">Orbit Constraints</span><span class="svc-result pass" id="svc2">✓ PASS</span></div>
+            <div class="sv-row"><span class="svc-name">Keep-Out Zone</span><span class="svc-result pass" id="svc3">✓ PASS</span></div>
+            <div class="sv-row"><span class="svc-name">Collision Threshold</span><span class="svc-result pass" id="svc4">✓ PASS</span></div>
+            <div class="sv-row"><span class="svc-name">Fuel Constraint</span><span class="svc-result pass" id="svc5">✓ PASS</span></div>
+            <div class="sv-row"><span class="svc-name">Trajectory Stability</span><span class="svc-result pass" id="svc6">✓ PASS</span></div>
+          </div>
+          <div class="sv-final" id="svFinal"><span class="sv-final-icon">🟢</span><span id="svFinalText">SAFE TO EXECUTE</span></div>
+          <div class="safety-principle">AI PROPOSES · PHYSICS VERIFIES · SAFETY DECIDES</div>
+        </div>
+      </div>
+
+      <!-- CUBESAT VISUAL -->
+      <div class="panel">
+        <div class="panel-header">PROTOTYPE MODEL — AeroGuard-01 <span class="badge-active">3U CubeSat</span></div>
+        <div class="panel-body" style="padding:6px;">
+          <div class="cubesat-canvas-wrap">
+            <canvas id="cubesatCanvas" width="200" height="110"></canvas>
+          </div>
+          <!-- COMLINK -->
+          <div class="comlink-panel" style="margin-top:6px;">
+            <div class="comlink-header">
+              <span class="dot green-dot"></span>
+              ComLink — Ground ↔ CubeSat
+            </div>
+            <div class="comlink-log" id="comlinkLog"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /col-right -->
+  </div><!-- /dashboard-grid -->
+
+  <!-- BOTTOM ROW -->
+  <div class="bottom-row">
+
+    <!-- MANEUVER RECOMMENDATION -->
+    <div class="panel">
+      <div class="panel-header">ΔV MANEUVER OPTIMIZER</div>
+      <div class="panel-body maneuver-body">
+        <div class="mv-section">
+          <div class="mv-title">CURRENT ORBIT</div>
+          <div class="mv-row"><span>Altitude</span><span class="cyan" id="mvAlt">488.56 km</span></div>
+          <div class="mv-row"><span>Velocity</span><span class="cyan" id="mvVel">7.67 km/s</span></div>
+        </div>
+        <div class="mv-arrow">→</div>
+        <div class="mv-section">
+          <div class="mv-title">OPTIMIZED MANEUVER</div>
+          <div class="mv-row"><span>ΔV Required</span><span class="amber" id="mvDV">0.42 m/s</span></div>
+          <div class="mv-row"><span>Fuel Cost</span><span id="mvFuel">0.08%</span></div>
+          <div class="mv-row"><span>New Miss Dist</span><span class="green" id="mvMiss">2.84 → 8.72 km</span></div>
+          <div class="mv-row"><span>Trajectory</span><span class="green" id="mvTraj">SAFE ✓</span></div>
+        </div>
+        <div class="mv-buttons">
+          <button class="btn-primary" onclick="simulateManeuver()">SIMULATE MANEUVER</button>
+          <button class="btn-secondary" onclick="showPage('maneuver')">VIEW ΔV PROFILE</button>
+          <button class="btn-secondary" onclick="showPage('whatif')">WHAT-IF SIM</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPERATOR CONTROL -->
+    <div class="panel">
+      <div class="panel-header">OPERATOR CONTROL</div>
+      <div class="panel-body op-body">
+        <div class="op-status-wrap">
+          <span class="op-status-label">MANEUVER STATUS</span>
+          <span class="op-status" id="opStatus">STANDBY</span>
+        </div>
+        <div class="op-buttons">
+          <button class="btn-primary" onclick="runSimulation()">RUN SIMULATION</button>
+          <button class="btn-secondary" onclick="reviewManeuver()">REVIEW MANEUVER</button>
+          <button class="btn-approve-sm" onclick="approveManeuver()">APPROVE MANEUVER</button>
+          <button class="btn-reject-sm" onclick="rejectManeuver()">REJECT MANEUVER</button>
+          <button class="btn-abort-sm" onclick="emergencyAbort()">🚨 EMERGENCY ABORT</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVENT LOG MINI -->
+    <div class="panel event-panel">
+      <div class="panel-header">MISSION EVENT LOG <span class="badge-live">LIVE</span></div>
+      <div class="panel-body">
+        <div class="event-log" id="eventLogMini"></div>
+      </div>
+    </div>
+
+  </div><!-- /bottom-row -->
+</div><!-- /page-dashboard -->
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!--  ORBITAL MAP PAGE                           -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="page" id="page-orbital">
+  <div class="page-title">ORBITAL SITUATION MAP — FULL VIEW</div>
+  <div class="panel" style="height:calc(100vh - 180px)">
+    <div class="panel-header">
+      REAL-TIME ORBITAL VISUALIZATION
+      <span class="map-badge">SIMULATED DATA</span>
+      <span class="map-badge amber-badge">17 OBJECTS TRACKED</span>
+      <button class="btn-icon" onclick="toggleBeams()">⚡ TOGGLE BEAMS</button>
+      <button class="btn-icon" onclick="resetOrbitalView()">⟳ RESET</button>
+    </div>
+    <div class="orbital-map-wrap" style="height:calc(100% - 38px);">
+      <canvas id="orbitalCanvas2"></canvas>
+    </div>
+  </div>
+  <div class="orbital-legend">
+    <div class="leg-item"><span class="leg-dot" style="background:var(--cyan)"></span>AeroGuard-01</div>
+    <div class="leg-item"><span class="leg-dot" style="background:var(--green)"></span>Safe Satellites</div>
+    <div class="leg-item"><span class="leg-dot" style="background:var(--amber)"></span>Debris Objects</div>
+    <div class="leg-item"><span class="leg-dot" style="background:var(--red)"></span>Risk Object (Conjunction)</div>
+    <div class="leg-item"><span class="leg-line" style="border-top:2px dashed var(--cyan)"></span>Predicted Trajectory</div>
+    <div class="leg-item"><span class="leg-line" style="border-top:2px solid rgba(0,255,136,0.5)"></span>Safe Corridor</div>
+    <div class="leg-item"><span class="leg-line" style="border-top:2px solid rgba(0,212,255,0.4)"></span>Beam/Link</div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!--  RISK ANALYSIS PAGE                         -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="page" id="page-risk">
+  <div class="page-title">RISK ANALYSIS — DETAILED VIEW</div>
+  <div class="risk-analysis-grid">
+    <div class="panel">
+      <div class="panel-header">CONJUNCTION ANALYSIS</div>
+      <div class="panel-body">
+        <div class="risk-big" style="margin-bottom:12px">
+          <div class="risk-number" id="riskNumber2">3.7%</div>
+          <div class="risk-label" id="riskLabel2">MARGINAL RISK</div>
+        </div>
+        <div class="risk-stats">
+          <div class="rs-row"><span class="rslabel">Closest Approach Time</span><span class="rsval cyan" id="riskApproach2">6h 41m</span></div>
+          <div class="rs-row"><span class="rslabel">Miss Distance (Min)</span><span class="rsval cyan" id="riskMissDist2">0.8 km</span></div>
+          <div class="rs-row"><span class="rslabel">Relative Velocity</span><span class="rsval">11.7 km/s</span></div>
+          <div class="rs-row"><span class="rslabel">Object ID</span><span class="rsval amber">DEBRIS-3342</span></div>
+          <div class="rs-row"><span class="rslabel">Object Type</span><span class="rsval">Rocket Body Fragment</span></div>
+          <div class="rs-row"><span class="rslabel">Est. Size</span><span class="rsval">~0.4 m</span></div>
+          <div class="rs-row"><span class="rslabel">Prediction Horizon</span><span class="rsval">24 Hours</span></div>
+          <div class="rs-row"><span class="rslabel">AI Confidence Index</span><span class="rsval green" id="riskConf2">97.3%</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">48H RISK PROJECTION</div>
+      <div class="panel-body">
+        <canvas id="riskGraph2" style="width:100%;height:200px"></canvas>
+        <div class="rg-axis" style="justify-content:space-between;margin-top:6px">
+          <span>NOW</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span><span>30h</span><span>36h</span><span>42h</span><span>48h</span>
+        </div>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:4px;">
+          <div class="tc-row"><span>Model Type</span><span class="cyan">Gated GRU v5.1</span></div>
+          <div class="tc-row"><span>Risk Vector Decay</span><span id="rvDecay">1.2% ± 0.4%</span></div>
+          <div class="tc-row"><span>Prediction Accuracy</span><span class="green" id="predAcc">97.68% Confidence</span></div>
+          <div class="tc-row"><span>Last Compute Run</span><span class="dim">47 sec ago (Live-Test)</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">DECISION PIPELINE — AVOIDANCE DECISION FRAMEWORK</div>
+      <div class="panel-body">
+        <div class="dp-steps">
+          <div class="dp-step active"><span class="dp-dot"></span>DETECT</div>
+          <div class="dp-arrow-r">→</div>
+          <div class="dp-step active"><span class="dp-dot"></span>ANALYZE</div>
+          <div class="dp-arrow-r">→</div>
+          <div class="dp-step active"><span class="dp-dot"></span>FORECAST</div>
+          <div class="dp-arrow-r">→</div>
+          <div class="dp-step compute"><span class="dp-dot" style="background:var(--amber)"></span>COMPUTE</div>
+          <div class="dp-arrow-r">→</div>
+          <div class="dp-step" id="dpVerify"><span class="dp-dot"></span>VERIFY</div>
+          <div class="dp-arrow-r">→</div>
+          <div class="dp-step" id="dpExecute"><span class="dp-dot"></span>EXECUTE</div>
+        </div>
+        <div class="dp-update" style="font-size:8px;color:var(--text-label)">↺ UPDATE LOOP</div>
+        <div class="trajectory-queued">
+          <div class="tq-title">TRAJECTORY CORRECTION QUEUED</div>
+          <div class="tq-body">Computing delta-v burn sequence. Estimating propellant consumption: ~0.05% per impulse cycle.</div>
+          <div class="tq-quote">"Detect early. Compute fast. Maneuver safely."</div>
+        </div>
+        <div style="margin-top:12px;background:rgba(0,0,0,0.3);border:1px solid var(--border);padding:8px;">
+          <div style="font-size:8px;color:var(--text-label);letter-spacing:1px;margin-bottom:6px;">PROOF-OF-CONCEPT STATUS</div>
+          <div class="tc-row"><span>Hardware</span><span class="green">3U CubeSat COTS (~$80)</span></div>
+          <div class="tc-row"><span>Dataset</span><span class="amber">Simulated TLE orbits</span></div>
+          <div class="tc-row"><span>Model Status</span><span class="amber">CONCEPT — needs validation</span></div>
+          <div class="tc-row"><span>Flight Certified</span><span class="red">NO — Not flight ready</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!--  MANEUVER PLANNER PAGE                      -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="page" id="page-maneuver">
+  <div class="page-title">ΔV MANEUVER PLANNER — FULL VIEW</div>
+  <div class="maneuver-full-grid">
+    <div class="panel">
+      <div class="panel-header">CURRENT ORBITAL PARAMETERS</div>
+      <div class="panel-body">
+        <div class="param-grid">
+          <div class="pg-item"><span class="pg-label">Altitude</span><span class="pg-val cyan" id="mpAlt">488.56 km</span></div>
+          <div class="pg-item"><span class="pg-label">Velocity</span><span class="pg-val cyan" id="mpVel">7.67 km/s</span></div>
+          <div class="pg-item"><span class="pg-label">Inclination</span><span class="pg-val">97.4°</span></div>
+          <div class="pg-item"><span class="pg-label">Eccentricity</span><span class="pg-val">0.0011</span></div>
+          <div class="pg-item"><span class="pg-label">RAAN</span><span class="pg-val">233°</span></div>
+          <div class="pg-item"><span class="pg-label">Arg. of Perigee</span><span class="pg-val">112°</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">OPTIMIZED MANEUVER</div>
+      <div class="panel-body">
+        <div class="param-grid">
+          <div class="pg-item"><span class="pg-label">ΔV Required</span><span class="pg-val amber" id="mpDV">0.42 m/s</span></div>
+          <div class="pg-item"><span class="pg-label">Fuel Cost</span><span class="pg-val" id="mpFuel">0.08%</span></div>
+          <div class="pg-item"><span class="pg-label">Burn Duration</span><span class="pg-val">12.4 sec</span></div>
+          <div class="pg-item"><span class="pg-label">New Miss Dist</span><span class="pg-val green" id="mpMiss">8.72 km</span></div>
+          <div class="pg-item"><span class="pg-label">Improvement</span><span class="pg-val green" id="mpImprove">+5.88 km</span></div>
+          <div class="pg-item"><span class="pg-label">Trajectory</span><span class="pg-val green">SAFE ✓</span></div>
+        </div>
+        <div class="maneuver-actions">
+          <button class="btn-primary" onclick="simulateManeuver()">SIMULATE MANEUVER</button>
+          <button class="btn-secondary" onclick="compareTrajectories()">COMPARE TRAJECTORIES</button>
+          <button class="btn-secondary" onclick="viewDVProfile()">VIEW ΔV PROFILE</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">SIMULATION CONTROLS</div>
+      <div class="panel-body">
+        <div class="slider-row"><label>Altitude Change (km)</label><input type="range" min="-5" max="5" value="2" step="0.5" id="altSlider" oninput="updateSimParams()"><span class="slider-val" id="altSliderVal">2 km</span></div>
+        <div class="slider-row"><label>Delay Maneuver (min)</label><input type="range" min="0" max="60" value="10" step="5" id="delaySlider" oninput="updateSimParams()"><span class="slider-val" id="delaySliderVal">10 min</span></div>
+        <div class="slider-row"><label>Inclination Change (deg)</label><input type="range" min="-1" max="1" value="0.2" step="0.1" id="incSlider" oninput="updateSimParams()"><span class="slider-val" id="incSliderVal">0.2°</span></div>
+        <button class="btn-primary" style="margin-top:10px" onclick="runSimulation()">RUN SIMULATION</button>
+        <div class="sim-result-box">
+          <div class="sr-title">SIMULATION RESULT</div>
+          <div class="sr-grid">
+            <div class="sr-row"><span>Old Risk</span><span id="srOldRisk">0.037</span></div>
+            <div class="sr-row"><span>New Risk</span><span class="green" id="srNewRisk">0.000000</span></div>
+            <div class="sr-row"><span>Old Closest Approach</span><span id="srOldApproach">2.84 km</span></div>
+            <div class="sr-row"><span>New Closest Approach</span><span class="green" id="srNewApproach">190.652 km</span></div>
+            <div class="sr-row"><span>ΔV</span><span class="amber" id="srDV">0.124 m/s</span></div>
+            <div class="sr-row"><span>Relative Velocity</span><span id="srRelVel">15.1039 km/s</span></div>
+          </div>
+          <div class="sr-note" id="srNote">Applying a maneuver of +2.0 km altitude, +10 min timing shift reduces estimated collision probability.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:8px">
+    <div class="panel-header">ΔV BURN PROFILE VISUALIZATION</div>
+    <div class="panel-body"><canvas id="dvProfileCanvas" style="width:100%;height:160px"></canvas></div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!--  WHAT-IF SIMULATOR PAGE                     -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="page" id="page-whatif">
+  <div class="page-title">WHAT-IF MANEUVER SIMULATOR</div>
+  <div style="display:grid;grid-template-columns:1fr 380px;gap:8px;">
+
+    <!-- Orbital canvas for what-if -->
+    <div class="panel">
+      <div class="panel-header">
+        CONJUNCTION VISUALIZATION
+        <span class="map-badge">SIMULATED DATA</span>
+        <span class="amber-badge map-badge" id="wiCurrentProb">Current Probability: 0.037000</span>
+      </div>
+      <div class="orbital-map-wrap" style="height:400px">
+        <canvas id="orbitalCanvas3"></canvas>
+      </div>
+      <div style="padding:8px 10px;display:flex;gap:16px;flex-wrap:wrap;font-size:9px;">
+        <div><span class="cyan" id="wiObjA">Object A: COSMOS 2494 (SKRL-768 2)</span></div>
+        <div><span class="amber" id="wiObjB">Object B: LEMUR-2-STARLIGHT</span></div>
+        <div>Closest Approach: <span class="cyan" id="wiClosestApproach">27.66 km</span></div>
+      </div>
+    </div>
+
+    <!-- Controls panel -->
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div class="panel">
+        <div class="panel-header">OBJECT PAIR</div>
+        <div class="panel-body">
+          <div class="whatif-objects">
+            <div class="wo-card">
+              <div class="wo-title">OBJECT A</div>
+              <div class="wo-name" style="font-size:9px">COSMOS 2494</div>
+              <div class="wo-row"><span>Type</span><span class="cyan">Active Sat.</span></div>
+              <div class="wo-row"><span>Altitude</span><span class="cyan" id="wiAltA">635 km</span></div>
+              <div class="wo-row"><span>Inclination</span><span>64.0°</span></div>
+              <div class="wo-row"><span>BAAN</span><span>233°</span></div>
+            </div>
+            <div class="wo-card">
+              <div class="wo-title">OBJECT B — RISK</div>
+              <div class="wo-name" style="font-size:9px;color:var(--amber)">DEBRIS-3342</div>
+              <div class="wo-row"><span>Type</span><span class="amber">Debris</span></div>
+              <div class="wo-row"><span>Altitude</span><span class="amber" id="wiAltB">630 km</span></div>
+              <div class="wo-row"><span>Risk Pc</span><span class="amber" id="wiPc">0.000008</span></div>
+              <div class="wo-row"><span>Size (est)</span><span>~0.4 m</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">MANEUVER PARAMETERS</div>
+        <div class="panel-body">
+          <div class="slider-row">
+            <label>Altitude Change (km)</label>
+            <input type="range" min="-10" max="10" value="2" step="0.5" id="wiAltSlider" oninput="updateWhatIf()">
+            <span class="slider-val" id="wiAltVal">2 km</span>
+          </div>
+          <div class="slider-row">
+            <label>Delay Maneuver (min)</label>
+            <input type="range" min="0" max="60" value="10" step="5" id="wiDelaySlider" oninput="updateWhatIf()">
+            <span class="slider-val" id="wiDelayVal">10 min</span>
+          </div>
+          <div class="slider-row">
+            <label>Inclination Change (deg)</label>
+            <input type="range" min="-1" max="1" value="0.2" step="0.1" id="wiIncSlider" oninput="updateWhatIf()">
+            <span class="slider-val" id="wiIncVal">0.2°</span>
+          </div>
+          <button class="btn-primary" style="background:rgba(0,255,136,0.15);border-color:var(--green);color:var(--green)" onclick="runWhatIf()">▶ RUN SIMULATION</button>
+        </div>
+      </div>
+
+      <div class="panel" id="wiResultPanel">
+        <div class="panel-header">SIMULATION RESULT <span class="badge-active" id="wiResultBadge">READY</span></div>
+        <div class="panel-body">
+          <div class="sr-grid" style="gap:5px;">
+            <div class="sr-row"><span>Old Risk (Pc)</span><span id="wiOldRisk">0.000008</span></div>
+            <div class="sr-row"><span>New Risk (Pc)</span><span class="green" id="wiNewRisk">0.000000</span></div>
+            <div class="sr-row"><span>Old Closest Approach</span><span id="wiOldCA">27.66 km</span></div>
+            <div class="sr-row"><span>New Closest Approach</span><span class="green" id="wiNewCA">190.652 km</span></div>
+            <div class="sr-row"><span>ΔV Required</span><span class="amber" id="wiDVResult">0.124 m/s</span></div>
+            <div class="sr-row"><span>Relative Velocity</span><span id="wiRelVel">15.1039 km/s</span></div>
+          </div>
+          <div class="sr-note" id="wiNote">Applying a maneuver of +2.0 km altitude, +10 min timing shift, and +0.20° inclination change reduces estimated collision probability.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!--  SENSORS PAGE                               -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="page" id="page-sensors">
+  <div class="page-title">LIVE SENSOR STATUS — HARDWARE PROTOTYPE</div>
+  <div class="sensors-grid">
+    <div class="sensor-card">
+      <div class="sc-header"><span class="sc-icon">⚡</span><span class="sc-name">ESP32</span><span class="sc-badge green">ONLINE</span></div>
+      <div class="sc-role">Edge AI Processing Unit</div>
+      <div class="sc-metrics">
+        <div class="scm-row"><span>CPU Load</span><span class="cyan" id="esp32cpu">34%</span></div>
+        <div class="scm-row"><span>Memory Free</span><span>218 KB</span></div>
+        <div class="scm-row"><span>Uptime</span><span>12h 44m</span></div>
+        <div class="scm-row"><span>Core Temp</span><span id="esp32temp">42°C</span></div>
+        <div class="scm-row"><span>Model Inference</span><span class="green">47 ms/cycle</span></div>
+      </div>
+      <div class="sc-live-bar"><div class="sc-live-fill" id="esp32bar" style="width:34%"></div></div>
+    </div>
+    <div class="sensor-card">
+      <div class="sc-header"><span class="sc-icon">📡</span><span class="sc-name">NEO-6M GPS</span><span class="sc-badge green">LOCKED</span></div>
+      <div class="sc-role">Position + Time Reference</div>
+      <div class="sc-metrics">
+        <div class="scm-row"><span>Latitude</span><span class="cyan" id="gpsLat">34.2134° N</span></div>
+        <div class="scm-row"><span>Longitude</span><span class="cyan" id="gpsLon">118.7291° E</span></div>
+        <div class="scm-row"><span>Altitude</span><span class="cyan" id="gpsAlt">488,312 m</span></div>
+        <div class="scm-row"><span>Satellites</span><span class="green">9 locked</span></div>
+        <div class="scm-row"><span>HDOP</span><span>0.84</span></div>
+      </div>
+      <div class="sc-live-bar"><div class="sc-live-fill green-fill" style="width:90%"></div></div>
+    </div>
+    <div class="sensor-card">
+      <div class="sc-header"><span class="sc-icon">🔄</span><span class="sc-name">MPU6050 IMU</span><span class="sc-badge green">NORMAL</span></div>
+      <div class="sc-role">Orientation + Acceleration</div>
+      <div class="sc-metrics">
+        <div class="scm-row"><span>Roll</span><span class="cyan" id="imuRoll">2.3°</span></div>
+        <div class="scm-row"><span>Pitch</span><span class="cyan" id="imuPitch">-1.1°</span></div>
+        <div class="scm-row"><span>Yaw</span><span class="cyan" id="imuYaw">97.4°</span></div>
+        <div class="scm-row"><span>Accel X</span><span id="imuAx">0.002 g</span></div>
+        <div class="scm-row"><span>Gyro Z</span><span id="imuGz">0.04 °/s</span></div>
+      </div>
+      <div class="sc-live-bar"><div class="sc-live-fill green-fill" style="width:100%"></div></div>
+    </div>
+    <div class="sensor-card">
+      <div class="sc-header"><span class="sc-icon">📷</span><span class="sc-name">OV2640 CAMERA</span><span class="sc-badge green">ACTIVE</span></div>
+      <div class="sc-role">Visual Input / Star Tracker</div>
+      <div class="sc-metrics">
+        <div class="scm-row"><span>Resolution</span><span>1600×1200</span></div>
+        <div class="scm-row"><span>FPS</span><span class="cyan">15 fps</span></div>
+        <div class="scm-row"><span>Stars tracked</span><span class="green">12</span></div>
+        <div class="scm-row"><span>Debris detected</span><span class="amber" id="camDebris">2</span></div>
+        <div class="scm-row"><span>Mode</span><span>Wide Field</span></div>
+      </div>
+      <div class="sc-live-bar"><div class="sc-live-fill green-fill" style="width:100%"></div></div>
+    </div>
+    <div class="sensor-card">
+      <div class="sc-header"><span class="sc-icon">💾</span><span class="sc-name">MicroSD</span><span class="sc-badge green">LOGGING</span></div>
+      <div class="sc-role">Data Storage</div>
+      <div class="sc-metrics">
+        <div class="scm-row"><span>Capacity</span><span>32 GB</span></div>
+        <div class="scm-row"><span>Used</span><span id="sdUsed">4.2 GB</span></div>
+        <div class="scm-row"><span>Free</span><span class="green">27.8 GB</span></div>
+        <div class="scm-row"><span>Write Speed</span><span>2.4 MB/s</span></div>
+        <div class="scm-row"><span>Log Rate</span><span class="cyan">10 Hz</span></div>
+      </div>
+      <div class="sc-live-bar"><div class="sc-live-fill" style="width:13%;background:var(--cyan)"></div></div>
+    </div>
+    <div class="sensor-card">
+      <div class="sc-header"><span class="sc-icon">📟</span><span class="sc-name">OLED DISPLAY</span><span class="sc-badge green">ACTIVE</span></div>
+      <div class="sc-role">Local Status Display</div>
+      <div class="sc-metrics">
+        <div class="scm-row"><span>Size</span><span>0.96 inch</span></div>
+        <div class="scm-row"><span>Protocol</span><span>I2C</span></div>
+        <div class="scm-row"><span>Refresh</span><span class="cyan">1 Hz</span></div>
+        <div class="scm-row"><span>Showing</span><span>Risk: 3.7%</span></div>
+      </div>
+      <div class="sc-live-bar"><div class="sc-live-fill green-fill" style="width:100%"></div></div>
+    </div>
+    <div class="sensor-card">
+      <div class="sc-header"><span class="sc-icon">⚙</span><span class="sc-name">SERVO MOTOR</span><span class="sc-badge amber">STANDBY</span></div>
+      <div class="sc-role">Maneuver Simulation Actuator</div>
+      <div class="sc-metrics">
+        <div class="scm-row"><span>Position</span><span class="cyan" id="servoPos">90°</span></div>
+        <div class="scm-row"><span>Torque</span><span>1.8 kg·cm</span></div>
+        <div class="scm-row"><span>Status</span><span class="amber">Awaiting command</span></div>
+        <div class="scm-row"><span>Mode</span><span id="servoMode">MANEUVER SIMULATION</span></div>
+      </div>
+      <div class="sc-live-bar"><div class="sc-live-fill amber-fill" id="servoBar" style="width:0%"></div></div>
+    </div>
+    <div class="sensor-card">
+      <div class="sc-header"><span class="sc-icon">📶</span><span class="sc-name">COMM SYSTEM</span><span class="sc-badge green">LINKED</span></div>
+      <div class="sc-role">Ground Station Link</div>
+      <div class="sc-metrics">
+        <div class="scm-row"><span>Protocol</span><span>UHF/S-Band</span></div>
+        <div class="scm-row"><span>Link Quality</span><span class="green" id="commLink">94%</span></div>
+        <div class="scm-row"><span>Latency</span><span class="cyan" id="commLatency">342 ms</span></div>
+        <div class="scm-row"><span>Uplink</span><span>9.6 kbps</span></div>
+        <div class="scm-row"><span>Downlink</span><span>128 kbps</span></div>
+      </div>
+      <div class="sc-live-bar"><div class="sc-live-fill green-fill" style="width:94%"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!--  TELEMETRY PAGE                             -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="page" id="page-telemetry">
+  <div class="page-title">LIVE TELEMETRY STREAM</div>
+  <div class="telemetry-grid">
+    <div class="panel"><div class="panel-header">POSITION &amp; MOTION</div>
+      <div class="panel-body">
+        <div class="telem-row"><span class="tl">Latitude</span><span class="tv cyan" id="tlLat">34.2134° N</span></div>
+        <div class="telem-row"><span class="tl">Longitude</span><span class="tv cyan" id="tlLon">118.7291° E</span></div>
+        <div class="telem-row"><span class="tl">Altitude</span><span class="tv cyan" id="tlAlt">488.312 km</span></div>
+        <div class="telem-row"><span class="tl">Velocity</span><span class="tv cyan" id="tlVel">7.6134 km/s</span></div>
+        <div class="telem-row"><span class="tl">Acceleration</span><span class="tv" id="tlAcc">0.002 m/s²</span></div>
+        <div class="telem-row"><span class="tl">Heading</span><span class="tv" id="tlHead">097.4°</span></div>
+      </div>
+    </div>
+    <div class="panel"><div class="panel-header">ORIENTATION</div>
+      <div class="panel-body">
+        <div class="telem-row"><span class="tl">Roll</span><span class="tv cyan" id="tlRoll">2.3°</span></div>
+        <div class="telem-row"><span class="tl">Pitch</span><span class="tv cyan" id="tlPitch">-1.1°</span></div>
+        <div class="telem-row"><span class="tl">Yaw</span><span class="tv cyan" id="tlYaw">97.4°</span></div>
+        <div class="telem-row"><span class="tl">Accel X</span><span class="tv" id="tlAx">0.0021 g</span></div>
+        <div class="telem-row"><span class="tl">Accel Y</span><span class="tv" id="tlAy">0.0003 g</span></div>
+        <div class="telem-row"><span class="tl">Accel Z</span><span class="tv" id="tlAz">0.9812 g</span></div>
+      </div>
+    </div>
+    <div class="panel"><div class="panel-header">SYSTEM HEALTH</div>
+      <div class="panel-body">
+        <div class="telem-row"><span class="tl">Battery</span><span class="tv green" id="tlBatt">87.4%</span></div>
+        <div class="telem-row"><span class="tl">Solar Array</span><span class="tv green">67W Nominal</span></div>
+        <div class="telem-row"><span class="tl">CPU Usage</span><span class="tv cyan" id="tlCpu">34%</span></div>
+        <div class="telem-row"><span class="tl">Memory</span><span class="tv" id="tlMem">218 KB free</span></div>
+        <div class="telem-row"><span class="tl">Core Temp</span><span class="tv" id="tlTemp">22°C</span></div>
+        <div class="telem-row"><span class="tl">Uptime</span><span class="tv">12h 44m</span></div>
+      </div>
+    </div>
+    <div class="panel"><div class="panel-header">COMMUNICATION</div>
+      <div class="panel-body">
+        <div class="telem-row"><span class="tl">Comm Status</span><span class="tv green">LINKED</span></div>
+        <div class="telem-row"><span class="tl">Link Quality</span><span class="tv green" id="tlLink">94%</span></div>
+        <div class="telem-row"><span class="tl">Latency</span><span class="tv cyan" id="tlLatency">342 ms</span></div>
+        <div class="telem-row"><span class="tl">GPS Accuracy</span><span class="tv green">2.1 m CEP</span></div>
+        <div class="telem-row"><span class="tl">Packets Lost</span><span class="tv">0.02%</span></div>
+      </div>
+    </div>
+    <div class="panel"><div class="panel-header">FUEL &amp; PROPULSION</div>
+      <div class="panel-body">
+        <div class="telem-row"><span class="tl">Fuel Level</span><span class="tv green" id="tlFuel">99.92%</span></div>
+        <div class="telem-row"><span class="tl">Fuel Used</span><span class="tv">0.08%</span></div>
+        <div class="telem-row"><span class="tl">Thruster A</span><span class="tv amber">STANDBY</span></div>
+        <div class="telem-row"><span class="tl">Thruster B</span><span class="tv amber">STANDBY</span></div>
+        <div class="telem-row"><span class="tl">Total ΔV Budget</span><span class="tv cyan">124.3 m/s</span></div>
+      </div>
+    </div>
+    <div class="panel"><div class="panel-header">ORBITAL ELEMENTS</div>
+      <div class="panel-body">
+        <div class="telem-row"><span class="tl">Semi-Major Axis</span><span class="tv cyan">6856.6 km</span></div>
+        <div class="telem-row"><span class="tl">Eccentricity</span><span class="tv">0.0011</span></div>
+        <div class="telem-row"><span class="tl">Inclination</span><span class="tv cyan">97.4°</span></div>
+        <div class="telem-row"><span class="tl">RAAN</span><span class="tv">233°</span></div>
+        <div class="telem-row"><span class="tl">Arg. of Perigee</span><span class="tv">112°</span></div>
+        <div class="telem-row"><span class="tl">True Anomaly</span><span class="tv cyan" id="tlTA">47.3°</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:8px">
+    <div class="panel-header">LIVE VELOCITY TELEMETRY STREAM <span class="badge-live">LIVE</span></div>
+    <div class="panel-body"><canvas id="telemChart" style="width:100%;height:100px"></canvas></div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!--  EVENT LOG PAGE                             -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="page" id="page-eventlog">
+  <div class="page-title">MISSION EVENT LOG — FULL TIMELINE</div>
+  <div class="panel" style="height:calc(100vh - 160px)">
+    <div class="panel-header">EVENT TIMELINE <span class="badge-live">LIVE</span><button class="btn-icon" onclick="clearLog()">CLEAR LOG</button></div>
+    <div class="panel-body" style="height:calc(100% - 38px);overflow-y:auto">
+      <div class="event-log full-log" id="eventLogFull"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!--  DECISION ADVANTAGE PAGE                    -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="page" id="page-advantage">
+  <div class="page-title">AEROGUARD DECISION ADVANTAGE</div>
+  <div class="adv-subtitle">Honest capability comparison — where AeroGuard adds value and where proven systems lead.</div>
+  <div class="adv-table-wrap">
+    <table class="adv-table">
+      <thead>
+        <tr><th>CAPABILITY</th><th>CURRENT OPERATIONAL APPROACH</th><th>AEROGUARD CONCEPT</th><th>ASSESSMENT</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Object Tracking</td><td><span class="green">🟢 Mature (Space-Fence, radar networks)</span></td><td><span class="amber">🟡 Sensor-assisted (camera + GPS)</span></td><td><span class="adv-lead current">CURRENT APPROACH LEADS</span></td></tr>
+        <tr><td>Close Approach Prediction</td><td><span class="green">🟢 Proven (conjunction screening, STM)</span></td><td><span class="amber">🟡 AI-assisted (LSTM/GRU model, concept)</span></td><td><span class="adv-lead current">CURRENT APPROACH LEADS</span></td></tr>
+        <tr><td>Risk Assessment</td><td><span class="green">🟢 Operational (Pc calculations, NASA/ESA)</span></td><td><span class="amber">🟡 GRU concept (needs flight validation)</span></td><td><span class="adv-lead potential">AEROGUARD HAS POTENTIAL — NEEDS VALIDATION</span></td></tr>
+        <tr><td>Decision Support Speed</td><td><span class="amber">🟡 Human analysts, hours to days</span></td><td><span class="green">🟢 Automated AI suggestions (minutes)</span></td><td><span class="adv-lead aero">AEROGUARD ADVANTAGE — HUMAN OVERSIGHT REQUIRED</span></td></tr>
+        <tr><td>Maneuver Planning</td><td><span class="green">🟢 Mature (CARA, FDS, established tools)</span></td><td><span class="amber">🟡 ΔV optimization concept (needs validation)</span></td><td><span class="adv-lead potential">AEROGUARD HAS POTENTIAL — UNVALIDATED</span></td></tr>
+        <tr><td>Safety Checks</td><td><span class="green">🟢 Proven (regulatory, multi-team review)</span></td><td><span class="amber">🟡 Physics rules + AI (concept stage)</span></td><td><span class="adv-lead current">CURRENT APPROACH IS MORE MATURE</span></td></tr>
+        <tr><td>Processing Location</td><td><span class="amber">🟡 Ground-heavy (uplink/downlink latency)</span></td><td><span class="green">🟢 Edge AI (ESP32, low latency on-board)</span></td><td><span class="adv-lead aero">AEROGUARD ADVANTAGE FOR LOW-LATENCY</span></td></tr>
+        <tr><td>Cost &amp; Accessibility</td><td><span class="amber">🟡 High cost (dedicated infrastructure)</span></td><td><span class="green">🟢 Low-cost COTS hardware (~₹6,500 prototype)</span></td><td><span class="adv-lead aero">AEROGUARD DEMOCRATIZES ACCESS</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="adv-summary">
+    <div class="adv-summary-title">KEY POSITION STATEMENT</div>
+    <div class="adv-summary-text">
+      AeroGuard does not replace established orbital safety systems.<br>
+      It adds an <strong>edge-AI decision-support layer</strong> designed to improve response speed and maneuver efficiency
+      while retaining physics-based validation and human oversight.
+    </div>
+    <div class="adv-principle">AI PROPOSES · PHYSICS VERIFIES · SAFETY DECIDES</div>
+    <div class="adv-roadmap">
+      <div class="adv-roadmap-title">DEVELOPMENT ROADMAP</div>
+      <div class="roadmap-steps">
+        <div class="roadmap-step done">✓ COTS Hardware Prototype</div>
+        <div class="rm-arrow">→</div>
+        <div class="roadmap-step done">✓ Simulated Orbital Dataset</div>
+        <div class="rm-arrow">→</div>
+        <div class="roadmap-step done">✓ LSTM/GRU Concept Model</div>
+        <div class="rm-arrow">→</div>
+        <div class="roadmap-step next">▶ Higher-Fidelity Simulation</div>
+        <div class="rm-arrow">→</div>
+        <div class="roadmap-step future">Train on Real TLE Data</div>
+        <div class="rm-arrow">→</div>
+        <div class="roadmap-step future">Lab Validation</div>
+        <div class="rm-arrow">→</div>
+        <div class="roadmap-step future">Flight Qualification</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /pageContainer -->
+
+<script>
+// ═══════════════════════════════════════════════
+//  BOOT SPLASH
+// ═══════════════════════════════════════════════
+const BOOT_LINES = [
+  {t:0,   msg:'[INIT] AeroGuard Orbit System v2.0 — SIH Prototype'},
+  {t:200, msg:'[BOOT] Loading orbital propagation module...'},
+  {t:450, msg:'[BOOT] Initializing LSTM/GRU risk engine...'},
+  {t:700, msg:'[BOOT] Connecting to simulated TLE database...'},
+  {t:950, msg:'[SENSOR] ESP32 edge processor: ONLINE'},
+  {t:1150,msg:'[SENSOR] NEO-6M GPS: LOCKED — 9 satellites'},
+  {t:1350,msg:'[SENSOR] MPU6050 IMU: CALIBRATED'},
+  {t:1550,msg:'[SENSOR] OV2640 Camera: ACTIVE — 15 fps'},
+  {t:1750,msg:'[SENSOR] MicroSD: LOGGING — 27.8 GB free'},
+  {t:1950,msg:'[AI] GRU model loaded — inference ready'},
+  {t:2150,msg:'[AI] Collision probability: 3.7% — MARGINAL RISK'},
+  {t:2350,msg:'[COMM] Ground station link established — 342 ms latency'},
+  {t:2550,msg:'[SYS] All subsystems nominal — OPERATIONAL'},
+  {t:2750,msg:'[OK] Mission Control dashboard ready.'},
+];
+
+function runBoot() {
+  const log = document.getElementById('bootLog');
+  const bar = document.getElementById('bootBar');
+  const ready = document.getElementById('bootReady');
+  BOOT_LINES.forEach((line, i) => {
+    setTimeout(() => {
+      const div = document.createElement('div');
+      div.className = 'boot-log-line';
+      div.style.animationDelay = '0s';
+      const color = line.msg.startsWith('[OK]') ? '#00d4ff' :
+                    line.msg.startsWith('[SENSOR]') ? '#00ff88' :
+                    line.msg.startsWith('[AI]') ? '#ffb800' :
+                    line.msg.startsWith('[COMM]') ? '#00d4ff' :
+                    line.msg.startsWith('[SYS]') ? '#00ff88' : '#aaaaaa';
+      div.innerHTML = '<span style="color:' + color + '">' + line.msg + '</span>';
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+      bar.style.width = ((i+1)/BOOT_LINES.length*100) + '%';
+    }, line.t);
+  });
+  setTimeout(() => {
+    ready.style.opacity = '1';
+    setTimeout(() => {
+      const splash = document.getElementById('bootSplash');
+      splash.classList.add('fade-out');
+      setTimeout(() => { splash.style.display = 'none'; }, 800);
+    }, 800);
+  }, 3200);
+}
+runBoot();
+
+// ═══════════════════════════════════════════════
+//  UTC CLOCK
+// ═══════════════════════════════════════════════
+function updateClock() {
+  const n = new Date();
+  const pad = x => String(x).padStart(2,'0');
+  const el = document.getElementById('utcClock');
+  if(el) el.textContent = pad(n.getUTCHours())+':'+pad(n.getUTCMinutes())+':'+pad(n.getUTCSeconds());
+}
+setInterval(updateClock, 1000); updateClock();
+
+// ═══════════════════════════════════════════════
+//  PAGE NAVIGATION
+// ═══════════════════════════════════════════════
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  const pg = document.getElementById('page-'+name);
+  if(pg) pg.classList.add('active');
+  document.querySelectorAll('.nav-link').forEach(l => {
+    if(l.getAttribute('onclick') && l.getAttribute('onclick').includes("'"+name+"'")) l.classList.add('active');
+  });
+  if(name==='orbital') setTimeout(()=>drawOrbitalMap('orbitalCanvas2',true), 50);
+  if(name==='risk')    setTimeout(()=>drawRiskGraph2(), 80);
+  if(name==='maneuver')setTimeout(()=>drawDVProfile(), 80);
+  if(name==='telemetry')setTimeout(()=>drawTelemChart(), 80);
+  if(name==='whatif') setTimeout(()=>drawOrbitalMap('orbitalCanvas3',false,true), 50);
+}
+
+// ═══════════════════════════════════════════════
+//  SIMULATION STATE
+// ═══════════════════════════════════════════════
+const SIM = {
+  mode: 'normal',
+  data: {
+    normal: {
+      riskPct:3.7, riskLabel:'MARGINAL RISK', riskColor:'var(--green)',
+      approach:'6h 41m', missDist:'0.8 km', confidence:'97.3%',
+      dv:'0.42', fuel:'0.08%', newMiss:'0.8 → 8.72 km', traj:'SAFE ✓',
+      aiRec:'NO IMMEDIATE MANEUVER REQUIRED', aiRecClass:'',
+      sysStatus:'OPERATIONAL', svResult:'SAFE TO EXECUTE', svClass:'', svIcon:'🟢',
+      opStatus:'STANDBY', conjAlert:false,
+      forecast:[1.2,1.5,1.8,2.1,2.8,3.2,3.7,3.4,2.9,2.3,1.8,1.4,1.1,0.9,0.8,0.7,0.6],
+      anomaly:'0.12', rvDecay:'1.2% ± 0.4%', predAcc:'97.68% Confidence',
+    },
+    warning: {
+      riskPct:34.2, riskLabel:'ELEVATED RISK', riskColor:'var(--amber)',
+      approach:'6h 41m', missDist:'0.8 km', confidence:'97.3%',
+      dv:'0.84', fuel:'0.16%', newMiss:'0.8 → 4.2 km', traj:'CAUTION',
+      aiRec:'MONITORING RECOMMENDED — RISK ELEVATED', aiRecClass:'warn',
+      sysStatus:'MONITORING', svResult:'REVIEW REQUIRED', svClass:'warn', svIcon:'🟡',
+      opStatus:'MONITORING', conjAlert:false,
+      forecast:[8,14,22,30,34,36,33,28,23,18,14,11,9,7,6,5,4],
+      anomaly:'0.47', rvDecay:'34.2% ± 2.1%', predAcc:'97.68% Confidence',
+    },
+    critical: {
+      riskPct:78.4, riskLabel:'CRITICAL — MANEUVER REQUIRED', riskColor:'var(--red)',
+      approach:'42 min', missDist:'0.31 km', confidence:'97.3%',
+      dv:'1.24', fuel:'0.24%', newMiss:'0.31 → 12.4 km', traj:'MANEUVER NOW',
+      aiRec:'⚠ MANEUVER RECOMMENDED — HUMAN APPROVAL REQUIRED', aiRecClass:'crit',
+      sysStatus:'CRITICAL', svResult:'MANEUVER REQUIRED', svClass:'danger', svIcon:'🔴',
+      opStatus:'APPROVAL REQUIRED', conjAlert:true,
+      forecast:[20,30,42,56,68,78,82,80,74,66,58,48,40,34,28,24,20],
+      anomaly:'0.89', rvDecay:'78.4% ± 3.2%', predAcc:'97.68% Confidence',
+    }
+  }
+};
+function D() { return SIM.data[SIM.mode]; }
+
+// ═══════════════════════════════════════════════
+//  SET SIM MODE
+// ═══════════════════════════════════════════════
+function setSimMode(mode) {
+  SIM.mode = mode; const d = D();
+
+  // Numbers
+  const ids = {
+    riskNumber:d.riskPct.toFixed(1)+'%', riskNumber2:d.riskPct.toFixed(1)+'%',
+    riskLabel:d.riskLabel, riskLabel2:d.riskLabel,
+    riskApproach:d.approach, riskApproach2:d.approach,
+    riskMissDist:d.missDist, riskMissDist2:d.missDist,
+    riskConf:d.confidence, riskConf2:d.confidence,
+    aiCollProb:d.riskPct.toFixed(1)+'%', aiAnomalyScore:d.anomaly,
+    aiConfidence:d.confidence, rvDecay:d.rvDecay, predAcc:d.predAcc,
+    mvDV:d.dv+' m/s', mvFuel:d.fuel, mvMiss:d.newMiss, mvTraj:d.traj,
+    mpDV:d.dv+' m/s', mpFuel:d.fuel,
+    alertProb:d.riskPct.toFixed(1)+'%', alertApproach:d.approach,
+    alertDist:d.missDist, alertDV:d.dv+' m/s',
+    opStatus:d.opStatus, sysStatusText:d.sysStatus,
+  };
+  Object.entries(ids).forEach(([id,val])=>{ const el=document.getElementById(id); if(el)el.textContent=val; });
+
+  // Colors
+  ['riskNumber','riskNumber2','riskLabel','riskLabel2'].forEach(id=>{
+    const el=document.getElementById(id); if(el)el.style.color=d.riskColor;
+  });
+  const rbf=document.getElementById('riskBarFill');
+  if(rbf){rbf.style.width=Math.min(d.riskPct,100)+'%';rbf.style.background=d.riskColor;}
+
+  // AI rec
+  const ar=document.getElementById('aiRecommendation');
+  const art=document.getElementById('aiRecText');
+  if(ar){ar.className='ai-recommendation '+d.aiRecClass;}
+  if(art)art.textContent=d.aiRec;
+  const ri=ar&&ar.querySelector('.rec-icon');
+  if(ri)ri.textContent=mode==='normal'?'✓':mode==='warning'?'⚠':'🚨';
+
+  // Sys status
+  const dot=document.getElementById('sysStatusDot');
+  const txt=document.getElementById('sysStatusText');
+  if(dot){dot.style.background=d.riskColor;dot.style.boxShadow='0 0 6px '+d.riskColor;}
+  if(txt){txt.style.color=d.riskColor;}
+
+  // Safety checks
+  const svf=document.getElementById('svFinal');
+  const svt=document.getElementById('svFinalText');
+  if(svf)svf.className='sv-final '+d.svClass;
+  if(svt)svt.textContent=d.svResult;
+  const svi=svf&&svf.querySelector('.sv-final-icon');
+  if(svi)svi.textContent=d.svIcon;
+  ['svc1','svc2','svc3','svc4','svc5','svc6'].forEach((id,i)=>{
+    const el=document.getElementById(id); if(!el)return;
+    if(mode==='critical'&&i>=3){el.textContent='⚠ REVIEW';el.className='svc-result warn';}
+    else if(mode==='warning'&&i===3){el.textContent='⚠ MONITOR';el.className='svc-result warn';}
+    else{el.textContent='✓ PASS';el.className='svc-result pass';}
+  });
+
+  // Pipeline
+  const as=document.getElementById('actStep');
+  if(as)as.className='pipeline-step '+(mode==='critical'?'red-step':'');
+
+  // Conjunction alert
+  const ca=document.getElementById('conjunctionAlert');
+  if(ca)ca.classList.toggle('hidden',!d.conjAlert);
+
+  // Servo
+  const st=document.getElementById('servoMiniText');
+  if(st)st.textContent=mode==='critical'?'SERVO EXECUTING':'SERVO STANDBY';
+  const sd=document.getElementById('servoMiniDot');
+  if(sd){sd.style.background=mode==='critical'?'var(--red)':'var(--amber)';sd.style.boxShadow='0 0 6px '+(mode==='critical'?'var(--red)':'var(--amber)');}
+
+  // Subsystem radar
+  const radar=document.getElementById('radarStatus');
+  if(radar){
+    radar.textContent=mode==='critical'?'● SCANNING ACTIVE':mode==='warning'?'● HEIGHTENED':'● PULSING';
+    radar.style.color=mode==='critical'?'var(--red)':mode==='warning'?'var(--amber)':'var(--amber)';
+  }
+
+  // Redraw
+  drawRiskGraph('riskGraph');
+
+  // Log
+  const msgs={normal:{sev:'info',msg:'Simulation: NORMAL — All systems nominal'},
+               warning:{sev:'warn',msg:'⚠ Simulation: WARNING — Elevated conjunction risk'},
+               critical:{sev:'crit',msg:'🚨 Simulation: CRITICAL — Conjunction alert! Approval required'}};
+  addEventLog(msgs[mode].sev,msgs[mode].msg);
+  addComLink(mode);
+}
+</script>
+
+<script>
+// ═══════════════════════════════════════════════
+//  ORBITAL MAP — ENHANCED WITH BEAMS + KEEP-OUT
+// ═══════════════════════════════════════════════
+let animFrames = {};
+let orbitalTime = 0;
+let showBeams = true;
+
+function toggleBeams() { showBeams = !showBeams; }
+function resetOrbitalView() {}
+
+const OBJECTS = [
+  {id:'AeroGuard-01', type:'satellite', color:'#00d4ff', size:6, orbit:200, speed:0.0042, phase:0, isMain:true},
+  {id:'DEBRIS-3342',  type:'debris',    color:'#ffb800', size:4, orbit:188, speed:0.0041, phase:2.8, risk:true},
+  {id:'DEBRIS-7891',  type:'debris',    color:'#ff7700', size:3, orbit:210, speed:0.0038, phase:1.2},
+  {id:'DEBRIS-1023',  type:'debris',    color:'#ff7700', size:3, orbit:225, speed:0.0036, phase:4.1},
+  {id:'SAT-Starlink-1',type:'satellite',color:'#00ff88', size:4, orbit:178, speed:0.0045, phase:0.8},
+  {id:'SAT-Starlink-2',type:'satellite',color:'#00ff88', size:4, orbit:182, speed:0.0044, phase:1.6},
+  {id:'SAT-Starlink-3',type:'satellite',color:'#00ff88', size:4, orbit:230, speed:0.0035, phase:3.3},
+  {id:'SAT-ISS',       type:'station',  color:'#aaddff', size:5, orbit:168, speed:0.0048, phase:5.1},
+  {id:'DEBRIS-4521',  type:'debris',    color:'#ff7700', size:2, orbit:240, speed:0.0033, phase:2.1},
+  {id:'DEBRIS-9932',  type:'debris',    color:'#ff5500', size:2, orbit:195, speed:0.0040, phase:3.8},
+  {id:'SAT-GPS-IIF',  type:'satellite', color:'#88aaff', size:4, orbit:260, speed:0.0030, phase:0.4},
+  {id:'SAT-GPS-III',  type:'satellite', color:'#88aaff', size:4, orbit:265, speed:0.0029, phase:1.9},
+  {id:'DEBRIS-2210',  type:'debris',    color:'#ff7700', size:2, orbit:155, speed:0.0052, phase:2.7},
+  {id:'DEBRIS-6670',  type:'debris',    color:'#ff5500', size:2, orbit:280, speed:0.0027, phase:4.9},
+  {id:'SAT-WeatherSat',type:'satellite',color:'#00cc88', size:4, orbit:175, speed:0.0046, phase:5.8},
+  {id:'DEBRIS-3310',  type:'debris',    color:'#ff7700', size:2, orbit:205, speed:0.0039, phase:1.0},
+  {id:'SAT-Comsat-A', type:'satellite', color:'#66aaff', size:4, orbit:250, speed:0.0031, phase:3.6},
+];
+
+function getObjPos(obj, cx, cy, earthR, scale, time) {
+  const oR = earthR + obj.orbit * scale / 600;
+  const angle = obj.phase + time * obj.speed * 60;
+  const x = cx + Math.cos(angle) * oR;
+  const y = cy + Math.sin(angle) * oR * 0.58;
+  return {x, y, r: oR, angle};
+}
+
+function drawOrbitalMap(canvasId, large, whatif) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  if (animFrames[canvasId]) cancelAnimationFrame(animFrames[canvasId]);
+
+  function frame() {
+    const parent = canvas.parentElement;
+    const W = parent.clientWidth || 700;
+    const H = parent.clientHeight || 420;
+    if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+    const ctx = canvas.getContext('2d');
+    const isMain = (canvasId === 'orbitalCanvas');
+    if (isMain) orbitalTime += 0.005;
+    const t = orbitalTime;
+    const cx = W / 2, cy = H / 2;
+    const scale = Math.min(W, H) * 0.44;
+    const earthR = scale * 0.44;
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Space background
+    const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
+    bg.addColorStop(0, 'rgba(4,18,36,0.95)');
+    bg.addColorStop(1, 'rgba(1,4,10,1)');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // Stars
+    for (let i = 0; i < 100; i++) {
+      const sx = ((Math.sin(i * 137.508) * 0.5 + 0.5) * W);
+      const sy = ((Math.cos(i * 97.31) * 0.5 + 0.5) * H);
+      const br = (Math.sin(t * 0.4 + i) * 0.5 + 0.5) * 0.8;
+      ctx.globalAlpha = br * 0.7;
+      ctx.fillStyle = i % 7 === 0 ? '#aaddff' : '#ffffff';
+      ctx.fillRect(sx, sy, i % 5 === 0 ? 1.5 : 1, i % 5 === 0 ? 1.5 : 1);
+    }
+    ctx.globalAlpha = 1;
+
+    // Orbit rings (faint grid)
+    for (let r = 0.55; r <= 1.1; r += 0.08) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r * scale, r * scale * 0.58, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,212,255,0.04)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+
+    // Earth
+    const er = earthR;
+    const eg = ctx.createRadialGradient(cx - er * 0.25, cy - er * 0.25, er * 0.1, cx, cy, er);
+    eg.addColorStop(0, '#2277aa');
+    eg.addColorStop(0.25, '#1a5580');
+    eg.addColorStop(0.55, '#0d3354');
+    eg.addColorStop(0.8, '#071e30');
+    eg.addColorStop(1, '#03101e');
+    ctx.beginPath(); ctx.arc(cx, cy, er, 0, Math.PI * 2);
+    ctx.fillStyle = eg; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, er, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(50,140,220,0.45)'; ctx.lineWidth = 2; ctx.stroke();
+
+    // Atmosphere glow
+    const atm = ctx.createRadialGradient(cx, cy, er - 2, cx, cy, er + 18);
+    atm.addColorStop(0, 'rgba(40,140,255,0.35)');
+    atm.addColorStop(1, 'transparent');
+    ctx.beginPath(); ctx.arc(cx, cy, er + 18, 0, Math.PI * 2);
+    ctx.fillStyle = atm; ctx.fill();
+
+    // EARTH label
+    ctx.fillStyle = 'rgba(0,212,255,0.35)'; ctx.font = '10px Courier New';
+    ctx.textAlign = 'center'; ctx.fillText('◉ EARTH', cx, cy + 5);
+
+    // Compute positions
+    const positions = OBJECTS.map(obj => getObjPos(obj, cx, cy, earthR, scale, t));
+    const mainPos = positions[0];
+    const riskPos = positions[1];
+    const isCrit = SIM.mode === 'critical';
+    const isWarn = SIM.mode === 'warning';
+
+    // Draw orbit ellipses
+    OBJECTS.forEach((obj, i) => {
+      const oR = earthR + obj.orbit * scale / 600;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, oR, oR * 0.58, 0, 0, Math.PI * 2);
+      if (obj.isMain) {
+        ctx.strokeStyle = 'rgba(0,212,255,0.28)'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 5]);
+      } else if (obj.risk) {
+        ctx.strokeStyle = isCrit ? 'rgba(255,59,59,0.4)' : 'rgba(255,184,0,0.22)';
+        ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+      } else if (obj.type === 'satellite') {
+        ctx.strokeStyle = 'rgba(0,255,136,0.09)'; ctx.lineWidth = 0.5; ctx.setLineDash([2, 5]);
+      } else {
+        ctx.strokeStyle = 'rgba(255,120,0,0.07)'; ctx.lineWidth = 0.5; ctx.setLineDash([1, 6]);
+      }
+      ctx.stroke(); ctx.setLineDash([]);
+    });
+
+    // BEAM LINES between satellites (inspired by reference image)
+    if (showBeams) {
+      const satIndices = OBJECTS.map((o, i) => o.type === 'satellite' || o.type === 'station' ? i : -1).filter(i => i >= 0);
+      satIndices.forEach((i, si) => {
+        satIndices.forEach((j, sj) => {
+          if (j <= i) return;
+          const pi = positions[i], pj = positions[j];
+          const dist = Math.sqrt((pi.x - pj.x) ** 2 + (pi.y - pj.y) ** 2);
+          if (dist < scale * 0.8) {
+            const alpha = Math.max(0, 0.25 - dist / (scale * 3));
+            ctx.beginPath();
+            ctx.moveTo(pi.x, pi.y); ctx.lineTo(pj.x, pj.y);
+            ctx.strokeStyle = `rgba(0,212,255,${alpha})`;
+            ctx.lineWidth = 0.7; ctx.stroke();
+          }
+        });
+      });
+      // Risk object gets red/amber beams to nearby objects
+      positions.forEach((p, i) => {
+        if (i === 1) return;
+        const dist = Math.sqrt((p.x - riskPos.x) ** 2 + (p.y - riskPos.y) ** 2);
+        if (dist < scale * 0.5) {
+          const alpha = Math.max(0, (isCrit ? 0.5 : 0.2) - dist / (scale * 1.5));
+          ctx.beginPath();
+          ctx.moveTo(riskPos.x, riskPos.y); ctx.lineTo(p.x, p.y);
+          ctx.strokeStyle = isCrit ? `rgba(255,59,59,${alpha})` : `rgba(255,184,0,${alpha})`;
+          ctx.lineWidth = 1; ctx.stroke();
+        }
+      });
+    }
+
+    // Safe corridor (green arc around main sat)
+    ctx.save();
+    const safeR = earthR + OBJECTS[0].orbit * scale / 600;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, safeR + 10, (safeR + 10) * 0.58, 0,
+      mainPos.angle - 0.25, mainPos.angle + 0.7);
+    ctx.strokeStyle = 'rgba(0,255,136,0.55)'; ctx.lineWidth = 9;
+    ctx.globalAlpha = 0.22; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // KEEP-OUT ZONE ellipse around risk object
+    if (isCrit || isWarn) {
+      const koPulse = Math.sin(t * 4) * 0.3 + 0.7;
+      ctx.save();
+      ctx.translate(riskPos.x, riskPos.y);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 28 * koPulse, 18 * koPulse, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = isCrit ? `rgba(255,59,59,${0.5 * koPulse})` : `rgba(255,184,0,${0.4 * koPulse})`;
+      ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 18, 12, 0, 0, Math.PI * 2);
+      ctx.fillStyle = isCrit ? 'rgba(255,59,59,0.12)' : 'rgba(255,184,0,0.08)';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Predicted trajectory (main sat, dashed cyan)
+    ctx.save(); ctx.setLineDash([6, 3]);
+    ctx.strokeStyle = 'rgba(0,212,255,0.75)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(mainPos.x, mainPos.y);
+    for (let k = 0; k <= 22; k++) {
+      const fa = mainPos.angle + k * 0.035;
+      const fx = cx + Math.cos(fa) * safeR;
+      const fy = cy + Math.sin(fa) * safeR * 0.58;
+      ctx.lineTo(fx, fy);
+    }
+    ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+
+    // Critical: risk collision trajectory (red dashed)
+    if (isCrit) {
+      const riskR2 = earthR + OBJECTS[1].orbit * scale / 600;
+      ctx.save(); ctx.setLineDash([4, 2]);
+      ctx.strokeStyle = 'rgba(255,59,59,0.85)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(riskPos.x, riskPos.y);
+      for (let k = 0; k <= 12; k++) {
+        const fa = riskPos.angle + k * 0.04;
+        ctx.lineTo(cx + Math.cos(fa) * riskR2, cy + Math.sin(fa) * riskR2 * 0.58);
+      }
+      ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+    }
+
+    // Closest approach marker
+    const dist2 = Math.sqrt((mainPos.x - riskPos.x) ** 2 + (mainPos.y - riskPos.y) ** 2);
+    if (dist2 < 90 || isCrit || isWarn) {
+      const midX = (mainPos.x + riskPos.x) / 2;
+      const midY = (mainPos.y + riskPos.y) / 2;
+      const pulse = Math.sin(t * 5) * 0.4 + 0.6;
+      ctx.beginPath(); ctx.arc(midX, midY, 14 * pulse, 0, Math.PI * 2);
+      ctx.strokeStyle = isCrit ? 'rgba(255,59,59,0.6)' : 'rgba(255,184,0,0.5)';
+      ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillStyle = isCrit ? 'rgba(255,59,59,0.15)' : 'rgba(255,184,0,0.1)';
+      ctx.fill();
+      ctx.fillStyle = isCrit ? '#ff3b3b' : '#ffb800';
+      ctx.font = '8px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText('CLOSEST APPROACH', midX, midY - 20);
+      // Dashed line between them
+      ctx.save(); ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(mainPos.x, mainPos.y); ctx.lineTo(riskPos.x, riskPos.y);
+      ctx.strokeStyle = isCrit ? 'rgba(255,59,59,0.6)' : 'rgba(255,184,0,0.45)';
+      ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+    }
+
+    // Draw objects
+    OBJECTS.forEach((obj, i) => {
+      const p = positions[i];
+      if (obj.isMain) {
+        const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 14);
+        glow.addColorStop(0, 'rgba(0,212,255,0.55)');
+        glow.addColorStop(1, 'transparent');
+        ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+        ctx.fillStyle = glow; ctx.fill();
+        // Draw CubeSat body (small rectangle)
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle + Math.PI / 2);
+        ctx.fillStyle = '#00d4ff'; ctx.fillRect(-4, -6, 8, 12);
+        ctx.fillStyle = 'rgba(0,212,255,0.3)'; ctx.fillRect(-8, -2, 4, 4); ctx.fillRect(4, -2, 4, 4); // solar panels
+        ctx.restore();
+      } else if (obj.risk) {
+        const pulse = Math.sin(t * 4) * 0.3 + 0.7;
+        ctx.beginPath(); ctx.arc(p.x, p.y, obj.size, 0, Math.PI * 2);
+        ctx.fillStyle = isCrit ? `rgba(255,59,59,${pulse})` : 'rgba(255,184,0,0.9)';
+        ctx.fill(); ctx.strokeStyle = isCrit ? '#ff3b3b' : '#ffb800'; ctx.lineWidth = 2; ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(p.x, p.y, obj.size, 0, Math.PI * 2);
+        ctx.fillStyle = obj.color; ctx.fill();
+      }
+      if (obj.isMain || obj.risk || obj.id.includes('ISS')) {
+        ctx.fillStyle = obj.isMain ? '#00d4ff' : obj.risk ? (isCrit ? '#ff3b3b' : '#ffb800') : '#aaddff';
+        ctx.font = '8px Courier New'; ctx.textAlign = 'left';
+        ctx.fillText(obj.id, p.x + 8, p.y - 3);
+      }
+    });
+
+    // ESTIMATED CLEARANCE label (if critical, like reference image)
+    if (isCrit) {
+      ctx.fillStyle = 'rgba(0,212,255,0.9)'; ctx.font = '9px Courier New'; ctx.textAlign = 'center';
+      ctx.fillText('ESTIMATED CLEARANCE: ' + D().missDist, cx, 24);
+      ctx.fillStyle = 'rgba(255,59,59,0.8)';
+      ctx.fillText('COLLISION AVOIDANCE SYSTEM — ACTIVE', cx, 38);
+    }
+
+    // Watermark
+    ctx.save(); ctx.globalAlpha = 0.1;
+    ctx.fillStyle = '#00d4ff'; ctx.font = 'bold 14px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('SIMULATION / PROOF-OF-CONCEPT DATA', W / 2, H - 12);
+    ctx.restore();
+
+    animFrames[canvasId] = requestAnimationFrame(frame);
+  }
+  frame();
+}
+</script>
+
+<script>
+// ═══════════════════════════════════════════════
+//  RISK GRAPH — with threshold lines + annotations
+// ═══════════════════════════════════════════════
+function drawRiskGraph(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = (canvas.parentElement.clientWidth - 24) || 180;
+  canvas.width = W; canvas.height = 80;
+  const pts = D().forecast;
+  const mx = 100;
+  ctx.clearRect(0, 0, W, 80);
+
+  // Threshold zones
+  ctx.fillStyle = 'rgba(0,255,136,0.04)'; ctx.fillRect(0, 56, W, 24); // 0-25%
+  ctx.fillStyle = 'rgba(255,184,0,0.04)'; ctx.fillRect(0, 24, W, 32); // 25-60%
+  ctx.fillStyle = 'rgba(255,59,59,0.05)'; ctx.fillRect(0, 0, W, 24);  // 60-100%
+
+  // Threshold lines
+  ctx.setLineDash([2, 3]);
+  ctx.strokeStyle = 'rgba(0,255,136,0.25)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, 56); ctx.lineTo(W, 56); ctx.stroke(); // 25%
+  ctx.strokeStyle = 'rgba(255,184,0,0.25)';
+  ctx.beginPath(); ctx.moveTo(0, 24); ctx.lineTo(W, 24); ctx.stroke(); // 60%
+  ctx.setLineDash([]);
+
+  // Threshold labels
+  ctx.fillStyle = 'rgba(0,255,136,0.4)'; ctx.font = '7px Courier New'; ctx.textAlign = 'right';
+  ctx.fillText('25%', W - 1, 55);
+  ctx.fillStyle = 'rgba(255,184,0,0.4)'; ctx.fillText('60%', W - 1, 23);
+
+  // Line color
+  const lc = SIM.mode === 'critical' ? '#ff3b3b' : SIM.mode === 'warning' ? '#ffb800' : '#00ff88';
+  const step = W / (pts.length - 1);
+  const grd = ctx.createLinearGradient(0, 0, 0, 80);
+  grd.addColorStop(0, lc + '55'); grd.addColorStop(1, 'transparent');
+
+  ctx.beginPath();
+  ctx.moveTo(0, 78 - (pts[0] / mx) * 70);
+  pts.forEach((v, i) => ctx.lineTo(i * step, 78 - (v / mx) * 70));
+  ctx.lineTo(W, 78); ctx.lineTo(0, 78); ctx.closePath();
+  ctx.fillStyle = grd; ctx.fill();
+
+  ctx.beginPath(); ctx.strokeStyle = lc; ctx.lineWidth = 2;
+  ctx.moveTo(0, 78 - (pts[0] / mx) * 70);
+  pts.forEach((v, i) => ctx.lineTo(i * step, 78 - (v / mx) * 70));
+  ctx.stroke();
+
+  // Peak annotation
+  const peak = Math.max(...pts);
+  const pi = pts.indexOf(peak);
+  const px = pi * step, py = 78 - (peak / mx) * 70;
+  ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2);
+  ctx.fillStyle = lc; ctx.fill();
+  ctx.fillStyle = lc; ctx.font = '7px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText(peak.toFixed(1) + '%', px, py - 6);
+}
+
+function drawRiskGraph2() {
+  const canvas = document.getElementById('riskGraph2');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = (canvas.parentElement.clientWidth - 24) || 300;
+  canvas.width = W; canvas.height = 200;
+  const pts = [...D().forecast, ...D().forecast.map(v => v * 0.55)];
+  const mx = 100;
+  ctx.clearRect(0, 0, W, 200);
+
+  ctx.fillStyle = 'rgba(0,255,136,0.03)'; ctx.fillRect(0, 130, W, 70);
+  ctx.fillStyle = 'rgba(255,184,0,0.03)'; ctx.fillRect(0, 52, W, 78);
+  ctx.fillStyle = 'rgba(255,59,59,0.04)'; ctx.fillRect(0, 0, W, 52);
+
+  ctx.setLineDash([2, 3]);
+  ctx.strokeStyle = 'rgba(0,255,136,0.2)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, 130); ctx.lineTo(W, 130); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,184,0,0.2)';
+  ctx.beginPath(); ctx.moveTo(0, 52); ctx.lineTo(W, 52); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,59,59,0.4)'; ctx.font = '7px Courier New'; ctx.textAlign = 'right';
+  ctx.fillText('60%', W-2, 51); ctx.fillStyle = 'rgba(255,184,0,0.4)'; ctx.fillText('25%', W-2, 129);
+
+  const lc = SIM.mode === 'critical' ? '#ff3b3b' : SIM.mode === 'warning' ? '#ffb800' : '#00ff88';
+  const step = W / (pts.length - 1);
+  const grd = ctx.createLinearGradient(0, 0, 0, 200);
+  grd.addColorStop(0, lc + '55'); grd.addColorStop(1, 'transparent');
+  ctx.beginPath();
+  ctx.moveTo(0, 190 - (pts[0] / mx) * 170);
+  pts.forEach((v, i) => ctx.lineTo(i * step, 190 - (v / mx) * 170));
+  ctx.lineTo(W, 190); ctx.lineTo(0, 190); ctx.closePath();
+  ctx.fillStyle = grd; ctx.fill();
+  ctx.beginPath(); ctx.strokeStyle = lc; ctx.lineWidth = 2;
+  ctx.moveTo(0, 190 - (pts[0] / mx) * 170);
+  pts.forEach((v, i) => ctx.lineTo(i * step, 190 - (v / mx) * 170));
+  ctx.stroke();
+
+  // Existing baseline (dashed)
+  const base = [1.2, 1.2, 1.3, 1.5, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0, 0.9, 0.9, 0.8, 0.8, 0.7, 0.7, 0.6, 0.6, 0.5, 0.5, 0.4, 0.4, 0.4];
+  const step2 = W / (base.length - 1);
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(0,212,255,0.35)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, 190 - (base[0] / mx) * 170);
+  base.forEach((v, i) => ctx.lineTo(i * step2, 190 - (v / mx) * 170));
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(0,212,255,0.5)'; ctx.font = '7px Courier New'; ctx.textAlign = 'left';
+  ctx.fillText('Existing Threat Env.', 4, 188);
+}
+
+// ═══════════════════════════════════════════════
+//  CUBESAT CANVAS DRAWING
+// ═══════════════════════════════════════════════
+function drawCubeSat() {
+  const canvas = document.getElementById('cubesatCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  let t = 0;
+
+  function frame() {
+    t += 0.012;
+    ctx.clearRect(0, 0, W, H);
+
+    // Dark space bg
+    ctx.fillStyle = '#00050f'; ctx.fillRect(0, 0, W, H);
+
+    // Stars
+    for (let i = 0; i < 30; i++) {
+      const sx = (Math.sin(i * 73.1) * 0.5 + 0.5) * W;
+      const sy = (Math.cos(i * 47.3) * 0.5 + 0.5) * H;
+      ctx.globalAlpha = (Math.sin(t + i) * 0.3 + 0.7) * 0.5;
+      ctx.fillStyle = '#fff'; ctx.fillRect(sx, sy, 1, 1);
+    }
+    ctx.globalAlpha = 1;
+
+    const cx = W * 0.42, cy = H / 2;
+    const bob = Math.sin(t * 0.8) * 3;
+    const rot = Math.sin(t * 0.5) * 0.08;
+
+    ctx.save();
+    ctx.translate(cx, cy + bob);
+    ctx.rotate(rot);
+
+    // CubeSat body (3U = tall rectangle, inspired by image)
+    // Main body (front face)
+    ctx.fillStyle = '#1a2a3a';
+    ctx.fillRect(-18, -28, 36, 56);
+    // Body border
+    ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(-18, -28, 36, 56);
+
+    // Grid texture on body
+    ctx.strokeStyle = 'rgba(0,212,255,0.15)'; ctx.lineWidth = 0.5;
+    for (let gx = -12; gx <= 12; gx += 12) {
+      ctx.beginPath(); ctx.moveTo(gx, -28); ctx.lineTo(gx, 28); ctx.stroke();
+    }
+    for (let gy = -14; gy <= 14; gy += 14) {
+      ctx.beginPath(); ctx.moveTo(-18, gy); ctx.lineTo(18, gy); ctx.stroke();
+    }
+
+    // Solar panels
+    const panelGrd = ctx.createLinearGradient(-52, -10, -22, -10);
+    panelGrd.addColorStop(0, '#4455aa'); panelGrd.addColorStop(1, '#334488');
+    ctx.fillStyle = panelGrd;
+    ctx.fillRect(-52, -10, 30, 20);
+    ctx.strokeStyle = '#6677cc'; ctx.lineWidth = 1;
+    ctx.strokeRect(-52, -10, 30, 20);
+    // Panel grid
+    ctx.strokeStyle = 'rgba(150,160,255,0.3)'; ctx.lineWidth = 0.5;
+    for (let pg = -42; pg <= -22; pg += 10) {
+      ctx.beginPath(); ctx.moveTo(pg, -10); ctx.lineTo(pg, 10); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(-52, 0); ctx.lineTo(-22, 0); ctx.stroke();
+
+    // Right solar panel
+    const panelGrd2 = ctx.createLinearGradient(22, -10, 52, -10);
+    panelGrd2.addColorStop(0, '#334488'); panelGrd2.addColorStop(1, '#4455aa');
+    ctx.fillStyle = panelGrd2;
+    ctx.fillRect(22, -10, 30, 20);
+    ctx.strokeStyle = '#6677cc'; ctx.lineWidth = 1;
+    ctx.strokeRect(22, -10, 30, 20);
+    ctx.strokeStyle = 'rgba(150,160,255,0.3)'; ctx.lineWidth = 0.5;
+    for (let pg = 32; pg <= 52; pg += 10) {
+      ctx.beginPath(); ctx.moveTo(pg, -10); ctx.lineTo(pg, 10); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(52, 0); ctx.stroke();
+
+    // Antenna (top)
+    ctx.strokeStyle = 'rgba(0,212,255,0.7)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(0, -38); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, -38, 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,212,255,0.8)'; ctx.fill();
+
+    // Camera lens (front center)
+    ctx.beginPath(); ctx.arc(0, -8, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#112233'; ctx.fill();
+    ctx.strokeStyle = 'rgba(0,212,255,0.6)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, -8, 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0,212,255,0.3)'; ctx.fill();
+
+    // Status light
+    const blinkColor = SIM.mode === 'critical' ? 'rgba(255,59,59,' :
+                       SIM.mode === 'warning' ? 'rgba(255,184,0,' : 'rgba(0,255,136,';
+    ctx.beginPath(); ctx.arc(12, -22, 3, 0, Math.PI * 2);
+    ctx.fillStyle = blinkColor + (Math.sin(t * 3) * 0.5 + 0.5) + ')';
+    ctx.fill();
+
+    // Body label
+    ctx.fillStyle = 'rgba(0,212,255,0.5)'; ctx.font = '6px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText('AeroGuard-01', 0, 20);
+    ctx.fillText('3U CubeSat', 0, 28);
+
+    ctx.restore();
+
+    // Orbit dot around cubesat
+    const ox = cx + Math.cos(t * 1.5) * 70;
+    const oy = cy + bob + Math.sin(t * 1.5) * 22;
+    ctx.beginPath(); ctx.arc(ox, oy, 2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,184,0,0.6)'; ctx.fill();
+
+    // Signal rings
+    for (let r = 1; r <= 3; r++) {
+      const rp = ((t * 0.5 + r * 0.33) % 1);
+      ctx.beginPath(); ctx.arc(cx, cy + bob, rp * 70, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(0,212,255,${0.3 * (1 - rp)})`; ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ═══════════════════════════════════════════════
+//  COMLINK FEED
+// ═══════════════════════════════════════════════
+const COMLINK_NORMAL = [
+  {sender:'ESA-BOT', cls:'cl-sender-esa', msg:'Debris positions update sent.'},
+  {sender:'CUBESAT', cls:'cl-sender-cubesat', msg:'ACK. Computing collision risk ...'},
+  {sender:'CUBESAT', cls:'cl-sender-cubesat', msg:'Risk: 3.7%. No action needed.'},
+  {sender:'ESA-BOT', cls:'cl-sender-esa', msg:'Acknowledged. Continue monitoring.'},
+  {sender:'CUBESAT', cls:'cl-sender-cubesat', msg:'Telemetry nominal. GPS locked.'},
+];
+const COMLINK_WARN = [
+  {sender:'ESA-BOT', cls:'cl-sender-esa', msg:'DEBRIS-3342 trajectory updated.'},
+  {sender:'CUBESAT', cls:'cl-sender-cubesat', msg:'WARNING: Risk elevated to 34.2%.'},
+  {sender:'CUBESAT', cls:'cl-sender-cubesat', msg:'GRU model: monitoring threshold.'},
+  {sender:'ESA-BOT', cls:'cl-sender-esa', msg:'Confirm — continue monitoring.'},
+];
+const COMLINK_CRIT = [
+  {sender:'CUBESAT', cls:'cl-sender-alert', msg:'COLLISION ALERT!'},
+  {sender:'CUBESAT', cls:'cl-sender-cubesat', msg:'Risk: 78.4%. Computing new orbit ...'},
+  {sender:'CUBESAT', cls:'cl-sender-alert', msg:'COLLISION ALERT — APPROVAL NEEDED'},
+  {sender:'ESA-BOT', cls:'cl-sender-esa', msg:'Burn sequence received. Reviewing.'},
+  {sender:'CUBESAT', cls:'cl-sender-cubesat', msg:'New orbit is safe. Awaiting go.'},
+  {sender:'ESA-BOT', cls:'cl-sender-esa', msg:'ACK. Approval pending operator.'},
+];
+
+let comlinkLines = [];
+function addComLink(mode) {
+  const pool = mode==='critical'?COMLINK_CRIT:mode==='warning'?COMLINK_WARN:COMLINK_NORMAL;
+  pool.forEach((l,i) => setTimeout(()=>pushComLink(l), i*700));
+}
+function pushComLink(line) {
+  comlinkLines.unshift(line);
+  if (comlinkLines.length > 5) comlinkLines.pop();
+  renderComLink();
+}
+function renderComLink() {
+  const el = document.getElementById('comlinkLog');
+  if (!el) return;
+  el.innerHTML = comlinkLines.map(l =>
+    `<div class="cl-line"><span class="${l.cls}">${l.sender}&gt;</span> <span class="cl-msg">${l.msg}</span></div>`
+  ).join('');
+}
+
+// Periodic comlink
+setInterval(() => {
+  const d = D();
+  const msgs = SIM.mode === 'critical' ? COMLINK_CRIT : SIM.mode === 'warning' ? COMLINK_WARN : COMLINK_NORMAL;
+  pushComLink(msgs[Math.floor(Math.random() * msgs.length)]);
+}, 5000);
+
+// ═══════════════════════════════════════════════
+//  ΔV PROFILE CHART
+// ═══════════════════════════════════════════════
+function drawDVProfile() {
+  const canvas = document.getElementById('dvProfileCanvas');
+  if (!canvas) return;
+  const W = (canvas.parentElement.clientWidth - 24) || 400;
+  canvas.width = W; canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  const dv = parseFloat(D().dv) || 0.42;
+  ctx.clearRect(0, 0, W, 160);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(0,212,255,0.07)'; ctx.lineWidth = 1;
+  [0, 0.5, 1.0, 1.5, 2.0].forEach((v, i) => {
+    const y = 140 - v * 60;
+    ctx.beginPath(); ctx.moveTo(48, y); ctx.lineTo(W - 8, y); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,212,255,0.45)'; ctx.font = '8px Courier New'; ctx.textAlign = 'right';
+    ctx.fillText(v.toFixed(1), 44, y + 4);
+  });
+  ctx.fillStyle = 'rgba(0,212,255,0.45)'; ctx.fillText('m/s', 44, 18);
+  ctx.strokeStyle = 'rgba(0,212,255,0.15)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(48, 140); ctx.lineTo(W - 8, 140); ctx.stroke();
+
+  const pts = [0, 0, dv * 0.2, dv * 0.55, dv * 0.85, dv, dv * 0.92, dv * 0.7, dv * 0.45, dv * 0.2, 0.02, 0];
+  const step = (W - 56) / (pts.length - 1);
+  const yS = 60 / 2.0, yB = 140;
+
+  const grd = ctx.createLinearGradient(0, 0, 0, yB);
+  grd.addColorStop(0, 'rgba(255,184,0,0.35)'); grd.addColorStop(1, 'transparent');
+  ctx.beginPath(); ctx.moveTo(48, yB);
+  pts.forEach((v, i) => ctx.lineTo(48 + i * step, yB - v * yS));
+  ctx.lineTo(48 + (pts.length - 1) * step, yB);
+  ctx.closePath(); ctx.fillStyle = grd; ctx.fill();
+
+  ctx.beginPath(); ctx.strokeStyle = '#ffb800'; ctx.lineWidth = 2.5;
+  pts.forEach((v, i) => {
+    if (i === 0) ctx.moveTo(48 + i * step, yB - v * yS);
+    else ctx.lineTo(48 + i * step, yB - v * yS);
+  });
+  ctx.stroke();
+
+  const pi = pts.indexOf(Math.max(...pts));
+  const ppx = 48 + pi * step, ppy = yB - Math.max(...pts) * yS;
+  ctx.fillStyle = '#ffb800'; ctx.font = 'bold 9px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText('ΔV = ' + dv + ' m/s', ppx, ppy - 10);
+  ctx.beginPath(); ctx.arc(ppx, ppy, 3.5, 0, Math.PI * 2); ctx.fill();
+
+  const labels = ['T-60s', 'T-30s', 'T-0', 'T+30s', 'T+60s'];
+  labels.forEach((l, i) => {
+    ctx.fillStyle = 'rgba(0,212,255,0.4)'; ctx.font = '8px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText(l, 48 + i * (W - 56) / 4, 154);
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  TELEMETRY CHART
+// ═══════════════════════════════════════════════
+let telemHistory = Array(60).fill(7.61).map((v, i) => v + Math.sin(i * 0.3) * 0.008);
+function drawTelemChart() {
+  const canvas = document.getElementById('telemChart');
+  if (!canvas) return;
+  const W = (canvas.parentElement.clientWidth - 24) || 400;
+  canvas.width = W; canvas.height = 100;
+  const ctx = canvas.getContext('2d');
+  const mn = 7.595, mx = 7.63;
+  ctx.clearRect(0, 0, W, 100);
+  ctx.strokeStyle = 'rgba(0,212,255,0.07)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = 10 + i * 20;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  const grd = ctx.createLinearGradient(0, 10, 0, 90);
+  grd.addColorStop(0, 'rgba(0,212,255,0.3)'); grd.addColorStop(1, 'transparent');
+  const step = W / (telemHistory.length - 1);
+  ctx.beginPath();
+  telemHistory.forEach((v, i) => {
+    const y = 90 - ((v - mn) / (mx - mn)) * 70;
+    if (i === 0) ctx.moveTo(0, y); else ctx.lineTo(i * step, y);
+  });
+  ctx.lineTo(W, 90); ctx.lineTo(0, 90); ctx.closePath();
+  ctx.fillStyle = grd; ctx.fill();
+  ctx.beginPath(); ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 1.5;
+  telemHistory.forEach((v, i) => {
+    const y = 90 - ((v - mn) / (mx - mn)) * 70;
+    if (i === 0) ctx.moveTo(0, y); else ctx.lineTo(i * step, y);
+  });
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(0,212,255,0.5)'; ctx.font = '8px Courier New'; ctx.textAlign = 'left';
+  ctx.fillText('VELOCITY (km/s)', 4, 97);
+  ctx.textAlign = 'right';
+  ctx.fillText(telemHistory[telemHistory.length - 1].toFixed(4) + ' km/s', W - 4, 97);
+}
+</script>
+
+<script>
+// ═══════════════════════════════════════════════
+//  EVENT LOG
+// ═══════════════════════════════════════════════
+let logEntries = [];
+const BASE_EVENTS = [
+  {sev:'info', msg:'AeroGuard Orbit system initialized — all modules active'},
+  {sev:'info', msg:'SIMULATION MODE ACTIVE — proof-of-concept prototype'},
+  {sev:'info', msg:'GPS position updated — Lat: 34.21° N  Lon: 118.73° E'},
+  {sev:'info', msg:'Orbital data processed — TLE epoch synchronized'},
+  {sev:'info', msg:'GRU model inference completed (47ms)'},
+  {sev:'info', msg:'Physics validation passed — all constraints nominal'},
+  {sev:'info', msg:'Telemetry transmitted to ground station'},
+  {sev:'info', msg:'IMU orientation updated — Roll: 2.3°  Pitch: -1.1°'},
+  {sev:'warn', msg:'New object detected — DEBRIS-3342 at 488.1 km'},
+  {sev:'warn', msg:'Conjunction analysis started — monitoring DEBRIS-3342'},
+  {sev:'info', msg:'ΔV optimization computed — 0.42 m/s burn sequence ready'},
+  {sev:'info', msg:'MicroSD log written — block 4294'},
+];
+
+function addEventLog(sev, msg) {
+  const n = new Date();
+  const pad = x => String(x).padStart(2, '0');
+  const ts = pad(n.getUTCHours()) + ':' + pad(n.getUTCMinutes()) + ':' + pad(n.getUTCSeconds());
+  const icon = sev === 'info' ? '🟢' : sev === 'warn' ? '🟡' : '🔴';
+  logEntries.unshift({ts, sev, msg, icon});
+  if (logEntries.length > 100) logEntries.pop();
+  renderLogs();
+}
+
+function renderLogs() {
+  const mini = document.getElementById('eventLogMini');
+  const full = document.getElementById('eventLogFull');
+  [mini, full].forEach((el, idx) => {
+    if (!el) return;
+    const entries = idx === 0 ? logEntries.slice(0, 10) : logEntries;
+    el.innerHTML = entries.map(e =>
+      `<div class="el-entry ${e.sev}">
+        <span class="el-time">${e.ts}</span>
+        <span class="el-sev">${e.icon}</span>
+        <span class="el-msg">${e.msg}</span>
+      </div>`
+    ).join('');
+  });
+}
+
+function clearLog() {
+  logEntries = [];
+  renderLogs();
+  addEventLog('info', 'Event log cleared by operator');
+}
+
+BASE_EVENTS.forEach((e, i) => setTimeout(() => addEventLog(e.sev, e.msg), i * 180));
+
+setInterval(() => {
+  const d = D();
+  const pools = {
+    normal: [
+      {sev:'info', msg:'Telemetry heartbeat — all systems nominal'},
+      {sev:'info', msg:'GPS position updated'},
+      {sev:'info', msg:'GRU model: prediction refreshed'},
+      {sev:'info', msg:'MicroSD log written'},
+    ],
+    warning: [
+      {sev:'warn', msg:'Risk elevated — DEBRIS-3342 approaching'},
+      {sev:'warn', msg:'Conjunction probability: ' + d.riskPct.toFixed(1) + '% — monitoring'},
+      {sev:'info', msg:'GRU model: anomaly score elevated (0.47)'},
+    ],
+    critical: [
+      {sev:'crit', msg:'🚨 CONJUNCTION ALERT — probability ' + d.riskPct.toFixed(1) + '%'},
+      {sev:'crit', msg:'Human approval required — maneuver queued'},
+      {sev:'warn', msg:'Closest approach: ' + d.approach + ' — CRITICAL'},
+      {sev:'info', msg:'Physics validation: maneuver sequence validated'},
+    ],
+  };
+  const pool = pools[SIM.mode];
+  addEventLog(pool[Math.floor(Math.random() * pool.length)].sev, pool[Math.floor(Math.random() * pool.length)].msg);
+}, 4500);
+
+// ═══════════════════════════════════════════════
+//  LIVE TELEMETRY VALUES
+// ═══════════════════════════════════════════════
+let TD = {
+  lat:34.2134, lon:118.7291, alt:488.312, vel:7.6134,
+  roll:2.3, pitch:-1.1, yaw:97.4, cpu:34, batt:87.4, temp:22, ta:47.3, link:94, pkts:0
+};
+
+function updateTelemetry() {
+  TD.lat += (Math.random() - 0.5) * 0.0008;
+  TD.lon += 0.0018 + (Math.random() - 0.5) * 0.0003;
+  TD.alt += (Math.random() - 0.5) * 0.08;
+  TD.vel += (Math.random() - 0.5) * 0.0008;
+  TD.roll += (Math.random() - 0.5) * 0.04;
+  TD.pitch += (Math.random() - 0.5) * 0.02;
+  TD.yaw += 0.0008;
+  TD.cpu = Math.max(20, Math.min(75, TD.cpu + (Math.random() - 0.5) * 2));
+  TD.batt = Math.max(0, TD.batt - 0.0004);
+  TD.temp += (Math.random() - 0.5) * 0.3;
+  TD.ta += 0.45;
+  TD.link = Math.max(88, Math.min(99, TD.link + (Math.random() - 0.5) * 1.5));
+  TD.pkts++;
+
+  const f = (n, d) => n.toFixed(d);
+  const upd = {
+    satLat:f(TD.lat,2)+'° N', satLon:f(TD.lon,2)+'° E',
+    satAlt:f(TD.alt,2)+' km', satVel:f(TD.vel,2)+' km/s',
+    mvAlt:f(TD.alt,2)+' km', mvVel:f(TD.vel,2)+' km/s',
+    mpAlt:f(TD.alt,2)+' km', mpVel:f(TD.vel,2)+' km/s',
+    gpsLat:f(TD.lat,4)+'° N', gpsLon:f(TD.lon,4)+'° E',
+    gpsAlt:Math.round(TD.alt*1000)+' m',
+    imuRoll:f(TD.roll,1)+'°', imuPitch:f(TD.pitch,1)+'°', imuYaw:f(TD.yaw,1)+'°',
+    imuAx:f((Math.random()-0.5)*0.009,3)+' g', imuGz:f((Math.random()-0.5)*0.08,2)+' °/s',
+    esp32cpu:Math.round(TD.cpu)+'%', esp32temp:Math.round(TD.temp+20)+'°C',
+    battLevel:f(TD.batt,1)+'%', solarOutput:'67W Nominal', coreTemp:'COOL ('+Math.round(TD.temp)+'°C)',
+    thrusterStatus:'● COOL ('+Math.round(TD.temp)+'°C)',
+    tlLat:f(TD.lat,4)+'° N', tlLon:f(TD.lon,4)+'° E',
+    tlAlt:f(TD.alt,3)+' km', tlVel:f(TD.vel,4)+' km/s',
+    tlAcc:f(Math.abs((Math.random()-0.5)*0.004),4)+' m/s²',
+    tlHead:f(TD.yaw,1)+'°', tlRoll:f(TD.roll,1)+'°',
+    tlPitch:f(TD.pitch,1)+'°', tlYaw:f(TD.yaw,1)+'°',
+    tlAx:f((Math.random()-0.5)*0.004,4)+' g',
+    tlAy:f((Math.random()-0.5)*0.002,4)+' g',
+    tlAz:f(0.9812+(Math.random()-0.5)*0.001,4)+' g',
+    tlBatt:f(TD.batt,1)+'%', tlCpu:Math.round(TD.cpu)+'%',
+    tlMem:Math.round(218+(Math.random()-0.5)*15)+' KB free',
+    tlTemp:Math.round(TD.temp)+'°C',
+    tlLink:Math.round(TD.link)+'%',
+    tlLatency:Math.round(320+TD.pkts%55)+' ms',
+    tlTA:f(TD.ta%360,1)+'°',
+    camDebris:SIM.mode==='critical'?'3':SIM.mode==='warning'?'2':'1',
+    commLink:Math.round(TD.link)+'%',
+    commLatency:Math.round(320+TD.pkts%55)+' ms',
+  };
+  Object.entries(upd).forEach(([id,val])=>{ const el=document.getElementById(id); if(el)el.textContent=val; });
+
+  const bar = document.getElementById('esp32bar');
+  if (bar) bar.style.width = Math.round(TD.cpu) + '%';
+
+  telemHistory.push(TD.vel);
+  if (telemHistory.length > 60) telemHistory.shift();
+  if (document.getElementById('page-telemetry')?.classList.contains('active')) drawTelemChart();
+}
+
+setInterval(updateTelemetry, 900);
+
+// ═══════════════════════════════════════════════
+//  WHAT-IF SIMULATOR
+// ═══════════════════════════════════════════════
+function updateWhatIf() {
+  const av = document.getElementById('wiAltSlider')?.value || 2;
+  const dv = document.getElementById('wiDelaySlider')?.value || 10;
+  const iv = document.getElementById('wiIncSlider')?.value || 0.2;
+  if(document.getElementById('wiAltVal')) document.getElementById('wiAltVal').textContent = av + ' km';
+  if(document.getElementById('wiDelayVal')) document.getElementById('wiDelayVal').textContent = dv + ' min';
+  if(document.getElementById('wiIncVal')) document.getElementById('wiIncVal').textContent = iv + '°';
+}
+
+function runWhatIf() {
+  const av = parseFloat(document.getElementById('wiAltSlider')?.value || 2);
+  const dv2 = parseFloat(document.getElementById('wiDelaySlider')?.value || 10);
+  const iv = parseFloat(document.getElementById('wiIncSlider')?.value || 0.2);
+  const baseRisk = 0.000008;
+  const newRisk = baseRisk / (1 + Math.abs(av) * 3 + dv2 * 0.05 + Math.abs(iv) * 2);
+  const oldCA = 27.66;
+  const newCA = oldCA * (1 + Math.abs(av) * 0.9 + dv2 * 0.3 + Math.abs(iv) * 8);
+  const dvCalc = (Math.abs(av) * 0.06 + Math.abs(iv) * 0.08).toFixed(3);
+
+  const upd = {
+    wiOldRisk: baseRisk.toFixed(6), wiNewRisk: newRisk.toFixed(6),
+    wiOldCA: oldCA.toFixed(2) + ' km', wiNewCA: newCA.toFixed(3) + ' km',
+    wiDVResult: dvCalc + ' m/s', wiRelVel: '15.' + Math.round(Math.random()*9999).toString().padStart(4,'0') + ' km/s',
+  };
+  Object.entries(upd).forEach(([id,val])=>{ const el=document.getElementById(id); if(el)el.textContent=val; });
+
+  const note = document.getElementById('wiNote');
+  if(note) note.textContent = `Applying a maneuver of ${av>0?'+':''}${av} km altitude, +${dv2} min timing shift, and ${iv>0?'+':''}${iv}° inclination change reduces estimated collision probability from ${baseRisk.toFixed(6)} to ${newRisk.toFixed(6)}.`;
+
+  const badge = document.getElementById('wiResultBadge');
+  if(badge){badge.textContent='COMPUTED'; badge.style.background='rgba(0,255,136,0.1)'; badge.style.borderColor='rgba(0,255,136,0.4)'; badge.style.color='var(--green)';}
+  if(document.getElementById('wiCurrentProb')) document.getElementById('wiCurrentProb').textContent = 'New Probability: ' + newRisk.toFixed(6);
+
+  addEventLog('info', `What-If simulation: ΔAlt=${av>0?'+':''}${av}km, Delay=${dv2}min → New Pc=${newRisk.toFixed(6)}`);
+}
+
+// ═══════════════════════════════════════════════
+//  OPERATOR ACTIONS
+// ═══════════════════════════════════════════════
+function simulateManeuver() {
+  addEventLog('info', 'Maneuver simulation started — computing trajectory delta');
+  document.getElementById('opStatus').textContent = 'SIMULATING...';
+  const servoPos = document.getElementById('servoPos');
+  const servoBar = document.getElementById('servoBar');
+  let t = 0;
+  const anim = setInterval(() => {
+    t += 5;
+    if (servoPos) servoPos.textContent = Math.round(90 + Math.sin(t * 0.15) * 45) + '°';
+    if (servoBar) servoBar.style.width = (Math.sin(t * 0.15) * 0.5 + 0.5) * 100 + '%';
+    if (t > 65) {
+      clearInterval(anim);
+      if (servoPos) servoPos.textContent = '90°';
+      if (servoBar) servoBar.style.width = '0%';
+      document.getElementById('opStatus').textContent = 'SIMULATION COMPLETE';
+      addEventLog('info', 'Maneuver simulation complete — trajectory validated');
+    }
+  }, 100);
+}
+
+function compareTrajectories() {
+  showPage('maneuver');
+  addEventLog('info', 'Trajectory comparison requested — opening maneuver planner');
+}
+
+function viewDVProfile() {
+  showPage('maneuver');
+  setTimeout(drawDVProfile, 150);
+}
+
+function runSimulation() { simulateManeuver(); }
+
+function reviewManeuver() {
+  showPage('maneuver');
+  addEventLog('warn', 'Operator reviewing maneuver parameters');
+  document.getElementById('opStatus').textContent = 'UNDER REVIEW';
+}
+
+function approveManeuver() {
+  addEventLog('info', '✓ Maneuver APPROVED by operator — initiating burn sequence');
+  document.getElementById('opStatus').textContent = '✓ APPROVED — EXECUTING';
+  const ca = document.getElementById('conjunctionAlert');
+  const actStep = document.getElementById('actStep');
+  if (actStep) actStep.classList.add('active-step');
+  if (ca) setTimeout(() => ca.classList.add('hidden'), 3500);
+  setTimeout(() => {
+    addEventLog('info', 'Burn sequence complete — new orbit confirmed SAFE');
+    document.getElementById('opStatus').textContent = 'MANEUVER COMPLETE';
+    if (SIM.mode === 'critical') {
+      document.getElementById('simModeSelect').value = 'normal';
+      setSimMode('normal');
+    }
+  }, 4000);
+}
+
+function rejectManeuver() {
+  addEventLog('warn', 'Maneuver REJECTED by operator — continuing monitoring');
+  document.getElementById('opStatus').textContent = 'REJECTED — MONITORING';
+}
+
+function emergencyAbort() {
+  addEventLog('crit', '🚨 EMERGENCY ABORT commanded by operator');
+  document.getElementById('opStatus').textContent = '🚨 ABORTED';
+  const ca = document.getElementById('conjunctionAlert');
+  if (ca) ca.classList.add('hidden');
+}
+
+function closeOIP() { document.getElementById('objectInfoPanel')?.classList.add('hidden'); }
+function resetOrbitalView() { }
+
+function updateSimParams() {
+  const av = document.getElementById('altSlider')?.value;
+  const dv = document.getElementById('delaySlider')?.value;
+  const iv = document.getElementById('incSlider')?.value;
+  if(document.getElementById('altSliderVal')) document.getElementById('altSliderVal').textContent = av + ' km';
+  if(document.getElementById('delaySliderVal')) document.getElementById('delaySliderVal').textContent = dv + ' min';
+  if(document.getElementById('incSliderVal')) document.getElementById('incSliderVal').textContent = iv + '°';
+  const nr = (0.037 / (1 + Math.abs(av) * 2)).toFixed(6);
+  const na = (2.84 * (1 + Math.abs(av) * 0.9)).toFixed(3);
+  const dvc = (Math.abs(av) * 0.05 + Math.abs(iv) * 0.08).toFixed(3);
+  if(document.getElementById('srNewRisk')) document.getElementById('srNewRisk').textContent = nr;
+  if(document.getElementById('srNewApproach')) document.getElementById('srNewApproach').textContent = na + ' km';
+  if(document.getElementById('srDV')) document.getElementById('srDV').textContent = dvc + ' m/s';
+  if(document.getElementById('srNote')) document.getElementById('srNote').textContent =
+    `Applying ${av>0?'+':''}${av} km altitude change, +${dv} min delay reduces estimated collision probability.`;
+}
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+window.addEventListener('load', () => {
+  drawOrbitalMap('orbitalCanvas', false, false);
+  setTimeout(() => { drawRiskGraph('riskGraph'); }, 500);
+  setTimeout(() => { drawCubeSat(); }, 800);
+  setTimeout(() => { addComLink('normal'); }, 1200);
+  showPage('dashboard');
+});
+
+window.addEventListener('resize', () => {
+  drawRiskGraph('riskGraph');
+  if(document.getElementById('page-orbital')?.classList.contains('active')) drawOrbitalMap('orbitalCanvas2',true);
+  if(document.getElementById('page-risk')?.classList.contains('active')) drawRiskGraph2();
+  if(document.getElementById('page-maneuver')?.classList.contains('active')) drawDVProfile();
+});
+</script>
+</body>
+</html>
